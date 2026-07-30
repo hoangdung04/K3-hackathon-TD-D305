@@ -377,7 +377,7 @@ textarea:focus-visible {
   position: relative;
   z-index: 7;
   width: min(100%, 760px);
-  margin: -110px auto 126px;
+  margin: -110px auto 26px;
   padding: 10px;
   background: rgba(244, 247, 251, 0.96);
   border: 1px solid #dce4ef;
