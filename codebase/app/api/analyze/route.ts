@@ -15,7 +15,9 @@ import {
 
 export const runtime = "edge";
 const MAX_IMAGE_LENGTH = 4_500_000;
-const DAILY_LIMIT = 15;
+// A student can review a lesson, ask follow-up questions, and still stay within
+// a sensible daily API budget.
+const DAILY_LIMIT = 30;
 const ALLOWED_IMAGE_PREFIXES = [
   "data:image/png;base64,",
   "data:image/jpeg;base64,",
@@ -89,7 +91,7 @@ export async function POST(request: Request) {
     }
     if (used >= DAILY_LIMIT) {
       return Response.json(
-        { error: "Bạn đã dùng hết 15 câu Tutor trong hôm nay.", quota: { used, limit: DAILY_LIMIT } },
+        { error: `Bạn đã dùng hết ${DAILY_LIMIT} câu Tutor trong hôm nay.`, quota: { used, limit: DAILY_LIMIT } },
         { status: 429, headers: { "retry-after": "86400" } },
       );
     }

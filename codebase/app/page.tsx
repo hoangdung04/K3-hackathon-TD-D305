@@ -581,7 +581,7 @@ export default function Home() {
     setFollowUpContext(nextFollowUpContext);
   };
 
-  const isQuotaError = error.includes("hết 15 câu Tutor");
+  const isQuotaError = error.includes("câu Tutor trong hôm nay");
 
   return (
     <main className="appShell">
@@ -748,11 +748,11 @@ export default function Home() {
 
           <div className="quotaRow">
             <span>Quota Tutor trong ngày</span>
-            <span>{quotaUsed} / 15 câu</span>
+            <span>{quotaUsed} / 30 câu</span>
             <span className="byokPill">⚿ BYOK</span>
           </div>
           <div className="quotaTrack">
-            <span style={{ width: `${Math.max(1, (quotaUsed / 15) * 100)}%` }} />
+            <span style={{ width: `${Math.max(1, (quotaUsed / 30) * 100)}%` }} />
           </div>
 
           <div className="demoControls">
