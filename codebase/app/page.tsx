@@ -581,6 +581,8 @@ export default function Home() {
     setFollowUpContext(nextFollowUpContext);
   };
 
+  const isQuotaError = error.includes("hết 15 câu Tutor");
+
   return (
     <main className="appShell">
       <header className="topbar">
@@ -908,15 +910,19 @@ export default function Home() {
 
             {stage === "error" ? (
               <div className="assistantMessage responseCard errorCard">
-                <span className="confidenceLabel warning">CHƯA THỂ PHÂN TÍCH</span>
+                <span className="confidenceLabel warning">{isQuotaError ? "ĐÃ ĐẠT GIỚI HẠN" : "CHƯA THỂ PHÂN TÍCH"}</span>
                 <strong>{error}</strong>
                 <p>
-                  Bạn cần khoanh vùng chính xác; vùng bạn khoanh chưa đủ dữ liệu.
+                  {isQuotaError
+                    ? "Bạn đã dùng đủ quota Tutor hôm nay. Vui lòng quay lại vào ngày mai."
+                    : "Bạn cần khoanh vùng chính xác; vùng bạn khoanh chưa đủ dữ liệu."}
                 </p>
-                <div className="responseActions">
-                  <button className="primaryAction" onClick={submitQuestion}>Thử lại</button>
-                  <button className="secondaryAction" onClick={clearDrawing}>Khoanh lại</button>
-                </div>
+                {!isQuotaError ? (
+                  <div className="responseActions">
+                    <button className="primaryAction" onClick={submitQuestion}>Thử lại</button>
+                    <button className="secondaryAction" onClick={clearDrawing}>Khoanh lại</button>
+                  </div>
+                ) : null}
               </div>
             ) : null}
           </div>
