@@ -9,7 +9,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const origin = `${protocol}://${host}`;
   const title = "Khoanh để hỏi · VLearn Tutor CP3";
   const description =
-    "VLearn Tutor dùng Vision để đọc đúng vùng học viên khoanh trên slide và giải thích có căn cứ.";
+    "VLearn Tutor dùng Entropy để đọc đúng vùng học viên khoanh trên slide và giải thích có căn cứ.";
 
   return {
     title,

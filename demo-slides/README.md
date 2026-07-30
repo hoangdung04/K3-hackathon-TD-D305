@@ -2,6 +2,8 @@
 
 Tạo PDF 6 trang từ outline này sau khi có kết quả run thật. Không ghi “đạt” nếu chưa có log.
 
+Kịch bản nói 5 phút và phân công hai người nằm tại [CP5 runbook](../validation/cp5-runbook.md). Chỉ đưa lên slide số đo và quote đã ghi trong `eval/` và `validation/`.
+
 1. **Pain & evidence:** 46,2% tutor response không citation; học viên cần chỉ đúng đoạn đang hỏi.
 2. **Lát cắt:** khoanh vùng → AI xác nhận → giải thích có evidence / khoanh lại.
 3. **Demo happy path:** khoanh một tiêu đề/đoạn rõ, hỏi, nhận giải thích.

@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable @next/next/no-img-element -- canvas capture requires the native loaded image element. */
 
 import {
   type CSSProperties,
@@ -7,94 +8,29 @@ import {
   useRef,
   useState,
 } from "react";
-
-type Stage =
-  | "draw"
-  | "analyzing"
-  | "confirm"
-  | "uncertain"
-  | "answer"
-  | "error";
-type Scenario = "normal" | "hard";
-type AnnotationTool = "read" | "pen" | "highlight";
-
-type SelectionBox = {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-};
-
-type TutorAnalysis = {
-  regionTitle: string;
-  regionDescription: string;
-  confidence: number;
-  needsConfirmation: boolean;
-  confirmationQuestion: string;
-  answerTitle: string;
-  answer: string;
-  evidence: string;
-};
-
-const DEFAULT_QUESTION = "Giải thích phần tôi vừa khoanh";
-const PEN_COLORS = [
-  { name: "Đỏ", value: "#dc2626", className: "red" },
-  { name: "Xanh dương", value: "#2563eb", className: "blue" },
-  { name: "Xanh lá", value: "#16a34a", className: "green" },
-  { name: "Vàng", value: "#ca8a04", className: "yellow" },
-  { name: "Cam", value: "#f59e0b", className: "orange" },
-  { name: "Đen", value: "#111827", className: "black" },
-] as const;
-const TEST_SLIDES = [
-  {
-    page: 10,
-    section: "01",
-    title: "Token Budget\nAwareness",
-    description: "Phân bổ token hợp lý giữa chỉ dẫn, ngữ cảnh và phần trả lời.",
-    accent: "blue",
-    cards: ["Instructions · 25%", "Context · 50%", "Output · 25%"],
-  },
-  {
-    page: 11,
-    section: "02",
-    title: "Advanced Prompting\nTechniques",
-    description:
-      "Dùng kỹ thuật nâng cao khi chúng cải thiện chất lượng thật sự, không dùng như thần chú.",
-    accent: "navy",
-    cards: ["Zero-shot", "Few-shot", "Chain of Thought"],
-  },
-  {
-    page: 12,
-    section: "03",
-    title: "Prompting Methods",
-    description: "So sánh bốn cách hướng dẫn mô hình theo số lượng ví dụ và mức suy luận.",
-    accent: "coral",
-    cards: ["Zero-shot", "One-shot", "Few-shot", "CoT"],
-  },
-  {
-    page: 13,
-    section: "04",
-    title: "Tool Calling\nWorkflow",
-    description: "Mô hình chọn công cụ, ứng dụng thực thi và kết quả được đưa lại vào ngữ cảnh.",
-    accent: "green",
-    cards: ["1 · User request", "2 · Tool call", "3 · Tool result", "4 · Final answer"],
-  },
-  {
-    page: 14,
-    section: "05",
-    title: "Evaluation\nScorecard",
-    description: "Đánh giá câu trả lời theo độ chính xác, căn cứ, tính rõ ràng và mức hữu ích.",
-    accent: "purple",
-    cards: ["Accuracy · 92", "Evidence · 86", "Clarity · 90", "Usefulness · 88"],
-  },
-] as const;
+import { RegionPreview } from "./components/region-preview";
+import {
+  type AnnotationTool,
+  type Scenario,
+  type SelectionBox,
+  type Stage,
+  type TutorAnalysis,
+  COURSE_SLIDES,
+  DEFAULT_QUESTION,
+  PEN_COLORS,
+} from "./lib/tutor-ui";
 
 export default function Home() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const slideRef = useRef<HTMLDivElement>(null);
+  const slideImageRef = useRef<HTMLImageElement>(null);
   const drawingRef = useRef(false);
   const drawingHistoryRef = useRef<ImageData[]>([]);
+  const strokeStartRef = useRef<{ x: number; y: number } | null>(null);
+  const strokePreviousRef = useRef<{ x: number; y: number } | null>(null);
+  const strokeLengthRef = useRef(0);
   const requestAbortRef = useRef<AbortController | null>(null);
+  const drawPromptTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const boundsRef = useRef({
     minX: Number.POSITIVE_INFINITY,
@@ -107,10 +43,18 @@ export default function Home() {
   const [scenario, setScenario] = useState<Scenario>("normal");
   const [annotationTool, setAnnotationTool] = useState<AnnotationTool>("pen");
   const [penColor, setPenColor] = useState<(typeof PEN_COLORS)[number]["value"]>("#dc2626");
+  const [strokeWidth, setStrokeWidth] = useState(4);
   const [zoom, setZoom] = useState(1);
   const [canUndo, setCanUndo] = useState(false);
   const [question, setQuestion] = useState(DEFAULT_QUESTION);
+  const [submittedQuestion, setSubmittedQuestion] = useState<string | null>(null);
   const [selection, setSelection] = useState<SelectionBox | null>(null);
+  const [followUpContext, setFollowUpContext] = useState<{
+    selection: SelectionBox;
+    image: string;
+    selectionImage: string;
+    page: number;
+  } | null>(null);
   const [analysis, setAnalysis] = useState<TutorAnalysis | null>(null);
   const [error, setError] = useState("");
   const [quotaUsed, setQuotaUsed] = useState(0);
@@ -124,11 +68,19 @@ export default function Home() {
   const [showHistory, setShowHistory] = useState(false);
   const [historyError, setHistoryError] = useState("");
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
-  const [feedback, setFeedback] = useState<"up" | "down" | null>(null);
+  const [completedTurns, setCompletedTurns] = useState<Array<{
+    id: string;
+    question: string;
+    analysis: TutorAnalysis;
+    page: number;
+  }>>([]);
+  const [feedbackByTurn, setFeedbackByTurn] = useState<Record<string, "up" | "down">>({});
   const [notice, setNotice] = useState("");
-  const [slideIndex, setSlideIndex] = useState(1);
+  const [drawPromptActive, setDrawPromptActive] = useState(false);
+  const [slideIndex, setSlideIndex] = useState(0);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
-  const currentSlide = TEST_SLIDES[slideIndex];
+  const [capturedSelectionImage, setCapturedSelectionImage] = useState<string | null>(null);
+  const currentSlide = COURSE_SLIDES[slideIndex];
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -154,6 +106,10 @@ export default function Home() {
     return () => observer.disconnect();
   }, [zoom]);
 
+  useEffect(() => () => {
+    if (drawPromptTimerRef.current) clearTimeout(drawPromptTimerRef.current);
+  }, []);
+
   const canvasPoint = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
     return {
@@ -170,12 +126,26 @@ export default function Home() {
     const context = event.currentTarget.getContext("2d");
     if (!context) return;
 
+    event.preventDefault();
+    if (drawPromptTimerRef.current) clearTimeout(drawPromptTimerRef.current);
+    setDrawPromptActive(false);
+    setSelection(null);
+    setFollowUpContext(null);
+    setAnalysis(null);
+    setSubmittedQuestion(null);
+    setCapturedImage(null);
+    setCapturedSelectionImage(null);
+    setError("");
+    setStage("draw");
     drawingHistoryRef.current.push(
       context.getImageData(0, 0, event.currentTarget.width, event.currentTarget.height),
     );
     setCanUndo(true);
     event.currentTarget.setPointerCapture(event.pointerId);
     drawingRef.current = true;
+    strokeStartRef.current = { x: point.x, y: point.y };
+    strokePreviousRef.current = { x: point.x, y: point.y };
+    strokeLengthRef.current = 0;
     boundsRef.current = {
       minX: point.x,
       minY: point.y,
@@ -184,7 +154,9 @@ export default function Home() {
     };
     context.beginPath();
     context.globalAlpha = annotationTool === "highlight" ? 0.34 : 1;
-    context.lineWidth = annotationTool === "highlight" ? 18 : 4;
+    context.lineWidth = annotationTool === "highlight"
+      ? Math.max(14, strokeWidth * 4)
+      : strokeWidth;
     context.strokeStyle = penColor;
     context.moveTo(point.x, point.y);
   };
@@ -197,6 +169,11 @@ export default function Home() {
 
     context.lineTo(point.x, point.y);
     context.stroke();
+    const previous = strokePreviousRef.current;
+    if (previous) {
+      strokeLengthRef.current += Math.hypot(point.x - previous.x, point.y - previous.y);
+    }
+    strokePreviousRef.current = { x: point.x, y: point.y };
     boundsRef.current = {
       minX: Math.min(boundsRef.current.minX, point.x),
       minY: Math.min(boundsRef.current.minY, point.y),
@@ -205,19 +182,50 @@ export default function Home() {
     };
   };
 
-  const finishDrawing = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+  const finishDrawingAt = (
+    canvas: HTMLCanvasElement,
+    pointerId: number,
+    clientX: number,
+    clientY: number,
+  ) => {
     if (!drawingRef.current) return;
-    const point = canvasPoint(event);
-    const context = event.currentTarget.getContext("2d");
+    const rect = canvas.getBoundingClientRect();
+    const point = {
+      x: clientX - rect.left,
+      y: clientY - rect.top,
+      width: rect.width,
+      height: rect.height,
+    };
+    const context = canvas.getContext("2d");
+    const previous = strokePreviousRef.current;
+    if (previous) {
+      strokeLengthRef.current += Math.hypot(point.x - previous.x, point.y - previous.y);
+    }
     context?.lineTo(point.x, point.y);
     context?.stroke();
     drawingRef.current = false;
+    if (canvas.hasPointerCapture(pointerId)) {
+      canvas.releasePointerCapture(pointerId);
+    }
     const bounds = boundsRef.current;
     const padding = 12;
     const left = Math.max(0, bounds.minX - padding);
     const top = Math.max(0, bounds.minY - padding);
     const right = Math.min(point.width, Math.max(bounds.maxX, point.x) + padding);
     const bottom = Math.min(point.height, Math.max(bounds.maxY, point.y) + padding);
+    const start = strokeStartRef.current;
+    const closesLoop = Boolean(
+      start && Math.hypot(point.x - start.x, point.y - start.y) <= Math.max(20, strokeLengthRef.current * 0.1),
+    );
+    const coveredArea = (right - left) * (bottom - top);
+    if (!closesLoop || strokeLengthRef.current < 70 || coveredArea < 900) {
+      const beforeStroke = drawingHistoryRef.current.pop();
+      if (beforeStroke) context?.putImageData(beforeStroke, 0, 0);
+      setCanUndo(drawingHistoryRef.current.length > 0);
+      setSelection(null);
+      setNotice("Chưa tạo được vùng khoanh hợp lệ. Hãy khoanh trọn phần chữ hoặc hình cần hỏi.");
+      return;
+    }
 
     setSelection({
       x: (left / point.width) * 100,
@@ -226,6 +234,29 @@ export default function Home() {
       height: Math.max(8, ((bottom - top) / point.height) * 100),
     });
   };
+
+  const finishDrawing = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    finishDrawingAt(
+      event.currentTarget,
+      event.pointerId,
+      event.clientX,
+      event.clientY,
+    );
+  };
+
+  useEffect(() => {
+    const endDetachedStroke = (event: PointerEvent) => {
+      const canvas = canvasRef.current;
+      if (!canvas || !drawingRef.current) return;
+      finishDrawingAt(canvas, event.pointerId, event.clientX, event.clientY);
+    };
+    window.addEventListener("pointerup", endDetachedStroke);
+    window.addEventListener("pointercancel", endDetachedStroke);
+    return () => {
+      window.removeEventListener("pointerup", endDetachedStroke);
+      window.removeEventListener("pointercancel", endDetachedStroke);
+    };
+  });
 
   const clearDrawing = () => {
     const canvas = canvasRef.current;
@@ -236,10 +267,12 @@ export default function Home() {
     drawingHistoryRef.current = [];
     setCanUndo(false);
     setSelection(null);
+    setFollowUpContext(null);
     setAnalysis(null);
+    setSubmittedQuestion(null);
     setCapturedImage(null);
+    setCapturedSelectionImage(null);
     setError("");
-    setFeedback(null);
     setStage("draw");
   };
 
@@ -251,8 +284,9 @@ export default function Home() {
     setCanUndo(drawingHistoryRef.current.length > 0);
     setSelection(null);
     setAnalysis(null);
+    setSubmittedQuestion(null);
     setCapturedImage(null);
-    setFeedback(null);
+    setCapturedSelectionImage(null);
     setStage("draw");
   };
 
@@ -267,9 +301,12 @@ export default function Home() {
   };
 
   const changeSlide = (nextIndex: number) => {
-    if (stage === "analyzing" || nextIndex < 0 || nextIndex >= TEST_SLIDES.length) return;
+    if (stage === "analyzing" || nextIndex < 0 || nextIndex >= COURSE_SLIDES.length) return;
     clearDrawing();
     setSlideIndex(nextIndex);
+    requestAnimationFrame(() => {
+      slideRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+    });
   };
 
   const sessionHeaders = () => {
@@ -281,58 +318,52 @@ export default function Home() {
     return { "x-vlearn-session": session };
   };
 
-  const makeSlideImage = async () => {
+  const makeSlideImage = async (selected: SelectionBox) => {
     const slide = slideRef.current;
+    const slideImage = slideImageRef.current;
     const ink = canvasRef.current;
-    if (!slide) throw new Error("Không thể đọc nội dung slide.");
+    if (!slide || !slideImage) throw new Error("Không thể đọc nội dung slide.");
     if (!ink) throw new Error("Không thể đọc lớp annotation.");
+    if (!slideImage.complete || !slideImage.naturalWidth) {
+      await slideImage.decode();
+    }
     const output = document.createElement("canvas");
     output.width = 1280;
     output.height = 720;
     const context = output.getContext("2d");
     if (!context) throw new Error("Trình duyệt không hỗ trợ canvas.");
 
-    const title =
-      slide.querySelector<HTMLElement>(".slideCopy h2")?.innerText.trim() || "";
-    const description =
-      slide.querySelector<HTMLElement>(".slideCopy p")?.innerText.trim() || "";
-    const section =
-      slide.querySelector<HTMLElement>(".slideSectionLabel")?.innerText.trim() || "";
-
-    context.fillStyle = "#315b94";
-    context.fillRect(0, 0, output.width, output.height);
-    context.fillStyle = "rgba(24, 53, 94, .45)";
-    context.fillRect(755, 0, 525, output.height);
-    context.fillStyle = "rgba(255, 255, 255, .07)";
-    context.font = "900 320px Arial";
-    context.fillText(section || "02", 830, 470);
-    context.fillStyle = "rgba(255, 255, 255, .68)";
-    context.font = "700 20px Arial";
-    context.fillText(section || "02", 62, 76);
-    context.fillStyle = "#fff";
-    context.font = "700 58px Arial";
-    title.split(/\r?\n/).forEach((line, index) => {
-      context.fillText(line, 72, 278 + index * 66);
-    });
-    context.font = "26px Arial";
-    wrapCanvasText(context, description, 72, 416, 660, 38);
-    const visualLabels = [...slide.querySelectorAll<HTMLElement>(".visualCard")];
-    visualLabels.forEach((card, index) => {
-      const columns = visualLabels.length > 3 ? 2 : 1;
-      const cardWidth = columns === 2 ? 190 : 390;
-      const cardHeight = 76;
-      const column = index % columns;
-      const row = Math.floor(index / columns);
-      const x = 805 + column * 205;
-      const y = 190 + row * 92;
-      context.fillStyle = "rgba(255,255,255,.16)";
-      context.fillRect(x, y, cardWidth, cardHeight);
-      context.fillStyle = "#fff";
-      context.font = "700 20px Arial";
-      wrapCanvasText(context, card.innerText.trim(), x + 16, y + 34, cardWidth - 32, 25);
-    });
+    context.drawImage(slideImage, 0, 0, output.width, output.height);
     context.drawImage(ink, 0, 0, output.width, output.height);
-    return output.toDataURL("image/jpeg", 0.88);
+    const padding = 110;
+    const sourceX = Math.max(0, (selected.x / 100) * output.width - padding);
+    const sourceY = Math.max(0, (selected.y / 100) * output.height - padding);
+    const sourceRight = Math.min(
+      output.width,
+      ((selected.x + selected.width) / 100) * output.width + padding,
+    );
+    const sourceBottom = Math.min(
+      output.height,
+      ((selected.y + selected.height) / 100) * output.height + padding,
+    );
+    const crop = document.createElement("canvas");
+    crop.width = Math.max(1, Math.round(sourceRight - sourceX));
+    crop.height = Math.max(1, Math.round(sourceBottom - sourceY));
+    crop.getContext("2d")?.drawImage(
+      output,
+      sourceX,
+      sourceY,
+      sourceRight - sourceX,
+      sourceBottom - sourceY,
+      0,
+      0,
+      crop.width,
+      crop.height,
+    );
+    return {
+      image: output.toDataURL("image/jpeg", 0.88),
+      selectionImage: crop.toDataURL("image/jpeg", 0.92),
+    };
   };
 
   const loadHistory = async () => {
@@ -353,24 +384,38 @@ export default function Home() {
   };
 
   const submitQuestion = async () => {
-    if (!selection || !question.trim()) return;
+    const activeContext = selection
+      ? null
+      : followUpContext;
+    const activeSelection = selection || activeContext?.selection;
+    if (!activeSelection || !question.trim()) return;
+    const nextQuestion = question.trim();
     requestAbortRef.current?.abort();
     const controller = new AbortController();
     requestAbortRef.current = controller;
     setStage("analyzing");
+    setSubmittedQuestion(nextQuestion);
     setError("");
     try {
-      const image = await makeSlideImage();
-      setCapturedImage(image);
+      const capture = selection
+        ? await makeSlideImage(activeSelection)
+        : activeContext && {
+          image: activeContext.image,
+          selectionImage: activeContext.selectionImage,
+        };
+      if (!capture) throw new Error("Không thể đọc ảnh của vùng vừa hỏi.");
+      setCapturedImage(capture.image);
+      setCapturedSelectionImage(capture.selectionImage);
       const response = await fetch("/api/analyze", {
         method: "POST",
         headers: { "content-type": "application/json", ...sessionHeaders() },
         signal: controller.signal,
         body: JSON.stringify({
-          image,
-          page: currentSlide.page,
-          question: question.trim(),
-          selection,
+          image: capture.image,
+          selectionImage: capture.selectionImage,
+          page: activeContext?.page || currentSlide.page,
+          question: nextQuestion,
+          selection: activeSelection,
         }),
       });
       const responseText = await response.text();
@@ -405,7 +450,10 @@ export default function Home() {
   const resetConversation = () => {
     requestAbortRef.current?.abort();
     setQuestion(DEFAULT_QUESTION);
+    setSubmittedQuestion(null);
     clearDrawing();
+    setCompletedTurns([]);
+    setFeedbackByTurn({});
     setShowHistory(false);
     setNotice("");
   };
@@ -421,9 +469,57 @@ export default function Home() {
       : "Case chuẩn: khoanh trọn một tiêu đề hoặc đoạn văn.");
   };
 
-  const recordFeedback = (value: "up" | "down") => {
-    setFeedback(value);
+  const recordFeedback = (turnId: string, value: "up" | "down") => {
+    setFeedbackByTurn((current) => ({ ...current, [turnId]: value }));
     setNotice(value === "up" ? "Đã ghi nhận: câu trả lời hữu ích." : "Đã ghi nhận: cần cải thiện câu trả lời này.");
+  };
+
+  const prepareNextQuestion = () => {
+    requestAbortRef.current?.abort();
+    setAnnotationTool("pen");
+    setQuestion(DEFAULT_QUESTION);
+    setSubmittedQuestion(null);
+    clearDrawing();
+    setNotice("Bút đã sẵn sàng — khoanh vùng mới rồi đặt câu hỏi tiếp.");
+    if (drawPromptTimerRef.current) clearTimeout(drawPromptTimerRef.current);
+    setDrawPromptActive(false);
+    requestAnimationFrame(() => {
+      setDrawPromptActive(true);
+      drawPromptTimerRef.current = setTimeout(() => {
+        setDrawPromptActive(false);
+        drawPromptTimerRef.current = null;
+      }, 2200);
+    });
+  };
+
+  const askRelatedKnowledge = (regionTitle: string) => {
+    if (!followUpContext) return;
+    setQuestion(`Kiến thức liên quan đến “${regionTitle}” là gì?`);
+    setNotice("Bạn có thể hỏi thêm định nghĩa, ví dụ hoặc so sánh về phần vừa khoanh.");
+    requestAnimationFrame(() => composerRef.current?.focus());
+  };
+
+  const completeAnswer = () => {
+    if (!analysis || !submittedQuestion) return;
+    const nextFollowUpContext = selection && capturedImage && capturedSelectionImage
+      ? {
+        selection,
+        image: capturedImage,
+        selectionImage: capturedSelectionImage,
+        page: currentSlide.page,
+      }
+      : followUpContext;
+    setCompletedTurns((current) => [
+      ...current,
+      {
+        id: crypto.randomUUID(),
+        question: submittedQuestion,
+        analysis,
+        page: currentSlide.page,
+      },
+    ]);
+    prepareNextQuestion();
+    setFollowUpContext(nextFollowUpContext);
   };
 
   return (
@@ -442,8 +538,8 @@ export default function Home() {
               ▣
             </span>
             <div>
-              <h1>day04-prompt-engineering-tool-calling.pdf</h1>
-              <p>COMP2010 · Lecture_material_ms204i6x_gqwyya</p>
+              <h1>d1-slide-hackathon.pdf</h1>
+              <p>AI & LLM Foundation · Bài giảng Khoá 1</p>
             </div>
           </div>
         </div>
@@ -483,74 +579,72 @@ export default function Home() {
                 <button key={color.value} type="button" className={`swatch ${color.className} ${penColor === color.value ? "active" : ""}`} onClick={() => setPenColor(color.value)} aria-label={`Chọn màu ${color.name}`} aria-pressed={penColor === color.value} />
               ))}
             </div>
-            <span className="strokeLabel">NÉT</span>
-            <span className="strokePreview" />
+            <label className="strokeControl">
+              <span className="strokeLabel">NÉT</span>
+              <input
+                className="strokeRange"
+                type="range"
+                min="2"
+                max="12"
+                step="1"
+                value={strokeWidth}
+                onChange={(event) => setStrokeWidth(Number(event.target.value))}
+                aria-label="Độ dày nét bút"
+                aria-valuetext={`${strokeWidth} pixel`}
+              />
+              <output className="strokeValue">{strokeWidth}px</output>
+            </label>
           </div>
 
           <div className="slidesViewport">
             <div className="sideTab">▹</div>
             <div className="slideTestPicker" aria-label="Bộ slide kiểm thử">
-              <span>5 SLIDE TEST</span>
+              <span>10 TRANG BÀI GIẢNG KHOÁ 1</span>
               <div>
-                {TEST_SLIDES.map((slide, index) => (
+                {COURSE_SLIDES.map((slide, index) => (
                   <button
                     key={slide.page}
-                    className={`slideThumb thumb-${slide.accent} ${
-                      index === slideIndex ? "active" : ""
-                    }`}
+                    className={`slideThumb ${index === slideIndex ? "active" : ""}`}
                     onClick={() => changeSlide(index)}
-                    aria-label={`Mở trang ${slide.page}: ${slide.title.replace("\n", " ")}`}
+                    aria-label={`Mở trang ${slide.page} của bài giảng Khoá 1`}
                   >
-                    <small>Trang {slide.page}</small>
-                    <strong>{slide.title.replace("\n", " ")}</strong>
-                    <i>{slide.cards.length} khối hình</i>
+                    <img src={slide.image} alt="" aria-hidden="true" draggable={false} />
+                    <span className="slideThumbCaption">Trang {slide.page}</span>
                   </button>
                 ))}
               </div>
             </div>
-            {slideIndex > 0 ? (
-              <SlidePreview
-                slide={TEST_SLIDES[slideIndex - 1]}
-                muted
-                onSelect={() => changeSlide(slideIndex - 1)}
-              />
-            ) : null}
             <article className="slideSheet currentSlide" style={{ "--slide-zoom": zoom } as CSSProperties}>
               <div className="slideMeta">
-                <span>Trang {currentSlide.page} / 43</span>
-                <span>day04-prompt-engineering-tool-calling.pdf</span>
+                <span>Trang {currentSlide.page} / {COURSE_SLIDES.length}</span>
+                <span>d1-slide-hackathon.pdf · Bài giảng Khoá 1</span>
               </div>
-              <div className="slideCanvas" ref={slideRef}>
-                <div className={`slideArtwork accent-${currentSlide.accent}`}>
-                  <div className="slideSectionLabel">{currentSlide.section}</div>
-                  <div className="slideCopy">
-                    <h2>{currentSlide.title.split("\n").map((line, index) => (
-                      <span key={line}>{line}{index === 0 ? <br /> : null}</span>
-                    ))}</h2>
-                    <p>{currentSlide.description}</p>
-                  </div>
-                  <div className="slideVisual" aria-label="Nội dung trực quan của slide">
-                    {currentSlide.cards.map((card) => (
-                      <div className="visualCard" key={card}>{card}</div>
-                    ))}
-                  </div>
-                  <div className="slideDecoration" aria-hidden="true">
-                    {currentSlide.section}
-                  </div>
-                </div>
+              <div className={`slideCanvas ${drawPromptActive ? "readyToDraw" : ""}`} ref={slideRef}>
+                <img
+                  ref={slideImageRef}
+                  className="slideImage"
+                  src={currentSlide.image}
+                  alt={`Trang ${currentSlide.page} của bài giảng AI & LLM Foundation Khoá 1`}
+                  draggable={false}
+                />
                 <canvas
                   ref={canvasRef}
                   className="annotationCanvas"
-                  aria-label="Lớp annotation của trang 11"
+                  aria-label={`Khoanh vùng trên trang ${currentSlide.page}`}
                   onPointerDown={startDrawing}
                   onPointerMove={draw}
                   onPointerUp={finishDrawing}
                   onPointerCancel={finishDrawing}
                   aria-disabled={annotationTool === "read"}
                 />
-                {stage !== "draw" && selection ? (
+                {drawPromptActive ? (
+                  <div className="drawAgainPrompt" role="status">
+                    ✎ Khoanh vùng mới ngay tại đây
+                  </div>
+                ) : null}
+                {selection ? (
                   <div
-                    className="detectedBox"
+                    className={`detectedBox ${stage === "draw" ? "selectionReady" : ""}`}
                     style={{
                       left: `${selection.x}%`,
                       top: `${selection.y}%`,
@@ -558,7 +652,7 @@ export default function Home() {
                       height: `${selection.height}%`,
                     }}
                   >
-                    <span>Vùng AI nhận được</span>
+                    <span>{stage === "draw" ? "Đã chọn vùng — nhập câu hỏi để gửi" : "Vùng AI nhận được"}</span>
                   </div>
                 ) : null}
               </div>
@@ -566,18 +660,12 @@ export default function Home() {
                 Kéo đến trang này để mở note riêng của trang.
               </p>
             </article>
-            {slideIndex < TEST_SLIDES.length - 1 ? (
-              <SlidePreview
-                slide={TEST_SLIDES[slideIndex + 1]}
-                onSelect={() => changeSlide(slideIndex + 1)}
-              />
-            ) : null}
           </div>
 
           <div className="pageNavigation">
             <button onClick={() => changeSlide(slideIndex - 1)} disabled={slideIndex === 0 || stage === "analyzing"}>‹</button>
-            <span>Trang {currentSlide.page} / 43</span>
-            <button onClick={() => changeSlide(slideIndex + 1)} disabled={slideIndex === TEST_SLIDES.length - 1 || stage === "analyzing"}>›</button>
+            <span>Trang {currentSlide.page} / {COURSE_SLIDES.length}</span>
+            <button onClick={() => changeSlide(slideIndex + 1)} disabled={slideIndex === COURSE_SLIDES.length - 1 || stage === "analyzing"}>›</button>
           </div>
         </div>
 
@@ -632,10 +720,37 @@ export default function Home() {
           </div>
 
           <div className="conversation">
-            <div className="assistantMessage">
+            <div className="assistantMessage onboardingHint">
               Xin chào! Khoanh vùng trên slide, sau đó hỏi mình về đúng phần
               bạn chưa hiểu nhé.
             </div>
+
+            {completedTurns.map((turn, index) => (
+              <div className="completedTurn" key={turn.id}>
+                <div className="studentMessage">{turn.question}</div>
+                <div className="assistantMessage responseCard answerCard">
+                  <span className="confidenceLabel">GIẢI THÍCH THEO SLIDE {turn.page}</span>
+                  <strong>{turn.analysis.answerTitle}</strong>
+                  <p>{turn.analysis.answer}</p>
+                  <div className="citation">Nguồn: Trang {turn.page} · {turn.analysis.evidence}</div>
+                  <div className="answerFeedback">
+                    <span>Câu trả lời này có hữu ích không?</span>
+                    <button className={feedbackByTurn[turn.id] === "up" ? "feedbackActive" : ""} onClick={() => recordFeedback(turn.id, "up")} aria-pressed={feedbackByTurn[turn.id] === "up"}>👍</button>
+                    <button className={feedbackByTurn[turn.id] === "down" ? "feedbackActive" : ""} onClick={() => recordFeedback(turn.id, "down")} aria-pressed={feedbackByTurn[turn.id] === "down"}>👎</button>
+                  </div>
+                  <div className="responseActions">
+                    {index === completedTurns.length - 1 && followUpContext ? (
+                      <button className="secondaryAction" onClick={() => askRelatedKnowledge(turn.analysis.regionTitle)}>
+                        Hỏi kiến thức liên quan
+                      </button>
+                    ) : null}
+                    <button className="primaryAction" onClick={prepareNextQuestion}>
+                      Khoanh vùng mới để hỏi tiếp
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
 
             {showHistory ? (
               <div className="historyPanel">
@@ -653,14 +768,14 @@ export default function Home() {
               </div>
             ) : null}
 
-            {stage !== "draw" ? (
-              <div className="studentMessage">{question}</div>
+            {submittedQuestion ? (
+              <div className="studentMessage">{submittedQuestion}</div>
             ) : null}
 
             {stage === "analyzing" ? (
               <div className="assistantMessage responseCard loadingCard">
                 <span className="visionSpinner" aria-hidden="true" />
-                <strong>Vision đang đọc vùng bạn khoanh…</strong>
+                <strong>Entropy đang đọc vùng bạn khoanh…</strong>
                 <p>Đang đối chiếu nét bút, nội dung slide và câu hỏi.</p>
               </div>
             ) : null}
@@ -679,7 +794,7 @@ export default function Home() {
                   page={currentSlide.page}
                 />
                 <div className="responseActions">
-                  <button className="primaryAction" onClick={() => setStage("answer")}>
+                  <button className="primaryAction" onClick={completeAnswer}>
                     Đúng, giải thích
                   </button>
                   <button className="secondaryAction" onClick={clearDrawing}>
@@ -706,23 +821,11 @@ export default function Home() {
                   <button className="primaryAction" onClick={clearDrawing}>
                     Khoanh lại
                   </button>
-                  <button className="secondaryAction" onClick={() => setStage("answer")}>
-                    Vẫn dùng vùng này
-                  </button>
-                </div>
-              </div>
-            ) : null}
-
-            {stage === "answer" && analysis ? (
-              <div className="assistantMessage responseCard answerCard">
-                <span className="confidenceLabel">GIẢI THÍCH THEO SLIDE {currentSlide.page}</span>
-                <strong>{analysis.answerTitle}</strong>
-                <p>{analysis.answer}</p>
-                <div className="citation">Nguồn: Trang {currentSlide.page} · {analysis.evidence}</div>
-                <div className="answerFeedback">
-                  <span>Câu trả lời này có hữu ích không?</span>
-                  <button className={feedback === "up" ? "feedbackActive" : ""} onClick={() => recordFeedback("up")} aria-pressed={feedback === "up"}>👍</button>
-                  <button className={feedback === "down" ? "feedbackActive" : ""} onClick={() => recordFeedback("down")} aria-pressed={feedback === "down"}>👎</button>
+                  {!analysis.requiresRedraw ? (
+                    <button className="secondaryAction" onClick={completeAnswer}>
+                      Vẫn dùng vùng này
+                    </button>
+                  ) : null}
                 </div>
               </div>
             ) : null}
@@ -732,8 +835,7 @@ export default function Home() {
                 <span className="confidenceLabel warning">CHƯA THỂ PHÂN TÍCH</span>
                 <strong>{error}</strong>
                 <p>
-                  Bạn có thể thử lại hoặc khoanh vùng rõ hơn. Nếu lỗi nói về API key,
-                  kiểm tra key ở môi trường server; khóa không bao giờ được gửi xuống trình duyệt.
+                  Bạn cần khoanh vùng chính xác; vùng bạn khoanh chưa đủ dữ liệu.
                 </p>
                 <div className="responseActions">
                   <button className="primaryAction" onClick={submitQuestion}>Thử lại</button>
@@ -755,7 +857,11 @@ export default function Home() {
             <button
               className="sendButton"
               aria-label="Gửi câu hỏi"
-              disabled={!selection || !question.trim() || stage !== "draw"}
+              disabled={
+                (!selection && !followUpContext) ||
+                !question.trim() ||
+                !["draw", "error"].includes(stage)
+              }
               onClick={submitQuestion}
             >
               ➤
@@ -763,6 +869,8 @@ export default function Home() {
             <div className="composerHint">
               {selection
                 ? `Đã nhận vùng khoanh trên trang ${currentSlide.page}`
+                : followUpContext
+                  ? "Hỏi tiếp về vùng trước, kiến thức liên quan, hoặc khoanh vùng mới"
                 : "Dùng bút khoanh một vùng để bắt đầu"}
             </div>
             {notice ? <div className="composerNotice" role="status">{notice}</div> : null}
@@ -771,98 +879,4 @@ export default function Home() {
       </section>
     </main>
   );
-}
-
-function SlidePreview({
-  slide,
-  muted = false,
-  onSelect,
-}: {
-  slide: (typeof TEST_SLIDES)[number];
-  muted?: boolean;
-  onSelect: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      className={`slideSheet previewSheet previewButton ${muted ? "muted" : ""}`}
-      onClick={onSelect}
-      aria-label={`Chọn trang ${slide.page} để khoanh vùng`}
-    >
-      <div className="slideMeta">
-        <span>Trang {slide.page} / 43</span>
-        <span>day04-prompt-engineering-tool-calling.pdf</span>
-      </div>
-      <div className={`previewArtwork preview-${slide.accent}`}>
-        <h3>{slide.title.replace("\n", " ")}</h3>
-        <div className="methodGrid">
-          {slide.cards.slice(0, 4).map((card) => <span key={card}>{card}</span>)}
-        </div>
-      </div>
-      <span className="previewAction">Bấm để mở và khoanh trang {slide.page}</span>
-    </button>
-  );
-}
-
-function RegionPreview({
-  selection,
-  title,
-  image,
-  page,
-}: {
-  selection: SelectionBox | null;
-  title: string;
-  image: string | null;
-  page: number;
-}) {
-  return (
-    <div className="regionPreview" aria-label="Xem trước vùng đã khoanh">
-      <div className="miniSlide">
-        {image ? (
-          // Preview is a client-generated data URL, not a remote production image.
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={image} alt={`Ảnh vùng khoanh trang ${page}`} />
-        ) : null}
-        {selection ? (
-          <span
-            className="miniSelection previewDetectedBox"
-            style={{
-              left: `${selection.x}%`,
-              top: `${selection.y}%`,
-              width: `${selection.width}%`,
-              height: `${selection.height}%`,
-            }}
-          />
-        ) : null}
-      </div>
-      <div>
-        <span>Trang {page}</span>
-        <strong>{title}</strong>
-      </div>
-    </div>
-  );
-}
-
-function wrapCanvasText(
-  context: CanvasRenderingContext2D,
-  text: string,
-  x: number,
-  y: number,
-  maxWidth: number,
-  lineHeight: number,
-) {
-  const words = text.split(/\s+/);
-  let line = "";
-  let lineIndex = 0;
-  for (const word of words) {
-    const candidate = line ? `${line} ${word}` : word;
-    if (context.measureText(candidate).width > maxWidth && line) {
-      context.fillText(line, x, y + lineIndex * lineHeight);
-      line = word;
-      lineIndex += 1;
-    } else {
-      line = candidate;
-    }
-  }
-  if (line) context.fillText(line, x, y + lineIndex * lineHeight);
 }
