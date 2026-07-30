@@ -36,8 +36,11 @@ test("server-renders the VLearn CP3 experience with the Khoá 1 source slides", 
   assert.match(html, /Case chuẩn/);
   assert.match(html, /Case khó/);
   assert.match(html, /Tải nét khoanh/);
-  assert.match(html, /Hoàn tác nét cuối/);
-  assert.match(html, /Ngữ cảnh đã đồng bộ/);
+  assert.match(html, /Hỏi AI/);
+  assert.doesNotMatch(html, /Hoàn tác nét cuối/);
+  assert.match(html, /Thu gọn khung chat/);
+  assert.match(html, /Nhập nội dung bạn cần hỏi/);
+  assert.doesNotMatch(html, /Ngữ cảnh đã đồng bộ/);
   assert.doesNotMatch(html, /Your site is taking shape/);
   assert.doesNotMatch(html, /codex-preview/);
 });

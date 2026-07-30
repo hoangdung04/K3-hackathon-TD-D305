@@ -49,7 +49,7 @@ export default function Home() {
   const [penColor, setPenColor] = useState<(typeof PEN_COLORS)[number]["value"]>("#dc2626");
   const [strokeWidth, setStrokeWidth] = useState(4);
   const [zoom, setZoom] = useState(1);
-  const [canUndo, setCanUndo] = useState(false);
+  const [isTutorOpen, setIsTutorOpen] = useState(true);
   const [question, setQuestion] = useState(DEFAULT_QUESTION);
   const [submittedQuestion, setSubmittedQuestion] = useState<string | null>(null);
   const [selection, setSelection] = useState<SelectionBox | null>(null);
@@ -136,7 +136,6 @@ export default function Home() {
       // Before the question is sent, a fresh circle replaces the previous one.
       context.clearRect(0, 0, event.currentTarget.width, event.currentTarget.height);
       drawingHistoryRef.current = [];
-      setCanUndo(false);
       setNotice("Đã xoá vùng khoanh cũ và chọn vùng mới.");
     }
     if (drawPromptTimerRef.current) clearTimeout(drawPromptTimerRef.current);
@@ -152,7 +151,6 @@ export default function Home() {
     drawingHistoryRef.current.push(
       context.getImageData(0, 0, event.currentTarget.width, event.currentTarget.height),
     );
-    setCanUndo(true);
     event.currentTarget.setPointerCapture(event.pointerId);
     drawingRef.current = true;
     strokeStartRef.current = { x: point.x, y: point.y };
@@ -233,7 +231,6 @@ export default function Home() {
     if (!closesLoop || strokeLengthRef.current < 70 || coveredArea < 900) {
       const beforeStroke = drawingHistoryRef.current.pop();
       if (beforeStroke) context?.putImageData(beforeStroke, 0, 0);
-      setCanUndo(drawingHistoryRef.current.length > 0);
       setSelection(null);
       setNotice("Chưa tạo được vùng khoanh hợp lệ. Hãy khoanh trọn phần chữ hoặc hình cần hỏi.");
       return;
@@ -283,7 +280,6 @@ export default function Home() {
       maxX: 0,
       maxY: 0,
     };
-    setCanUndo(false);
     setSelection(null);
     setFollowUpContext(null);
     setAnalysis(null);
@@ -291,26 +287,6 @@ export default function Home() {
     setCapturedImage(null);
     setCapturedSelectionImage(null);
     setError("");
-    setStage("draw");
-  };
-
-  const undoDrawing = () => {
-    const canvas = canvasRef.current;
-    const previous = drawingHistoryRef.current.pop();
-    if (!canvas || !previous) return;
-    canvas.getContext("2d")?.putImageData(previous, 0, 0);
-    setCanUndo(drawingHistoryRef.current.length > 0);
-    boundsRef.current = {
-      minX: Number.POSITIVE_INFINITY,
-      minY: Number.POSITIVE_INFINITY,
-      maxX: 0,
-      maxY: 0,
-    };
-    setSelection(null);
-    setAnalysis(null);
-    setSubmittedQuestion(null);
-    setCapturedImage(null);
-    setCapturedSelectionImage(null);
     setStage("draw");
   };
 
@@ -340,6 +316,21 @@ export default function Home() {
       window.localStorage.setItem(SESSION_STORAGE_KEY, session);
     }
     return { "x-vlearn-session": session };
+  };
+
+  const openTutorChat = () => {
+    setIsTutorOpen(true);
+    requestAnimationFrame(() => composerRef.current?.focus());
+  };
+
+  const toggleSlideFullscreen = async () => {
+    const slide = slideRef.current;
+    if (!slide) return;
+    if (document.fullscreenElement) {
+      await document.exitFullscreen();
+      return;
+    }
+    await slide.requestFullscreen?.();
   };
 
   const makeSlideImage = async (selected: SelectionBox) => {
@@ -461,7 +452,9 @@ export default function Home() {
       }
       setAnalysis(payload.analysis);
       if (payload.quota) setQuotaUsed(payload.quota.used);
-      if (queryScope === "lesson" && !payload.analysis.needsConfirmation) {
+      // A saved follow-up context was already confirmed on the first question,
+      // so subsequent questions must not ask the learner to confirm the same area again.
+      if ((queryScope === "lesson" && !payload.analysis.needsConfirmation) || activeContext) {
         setCompletedTurns((current) => [
           ...current,
           {
@@ -476,7 +469,7 @@ export default function Home() {
           image: capture.image,
           selectionImage: capture.selectionImage,
           page: currentSlide.page,
-          queryScope: "lesson",
+          queryScope,
         });
         setQuestion(DEFAULT_QUESTION);
         setSubmittedQuestion(null);
@@ -599,7 +592,7 @@ export default function Home() {
         </div>
       </header>
 
-      <section className="workspace">
+      <section className={`workspace ${isTutorOpen ? "" : "tutorCollapsed"}`}>
         <div className="readerPane">
           <div className="readerToolbar" aria-label="Thanh công cụ đọc">
             <div className="toolGroup">
@@ -614,12 +607,10 @@ export default function Home() {
               <button onClick={() => setZoom((value) => Math.min(1.3, Number((value + 0.1).toFixed(1))))} disabled={zoom >= 1.3} aria-label="Phóng to">＋</button>
             </div>
             <div className="utilityGroup">
-              <button aria-label="Đặt câu hỏi" onClick={() => composerRef.current?.focus()}>＋</button>
+              <button aria-label="Đặt câu hỏi" onClick={openTutorChat}>＋</button>
               <button aria-label="Tải nét khoanh" onClick={downloadAnnotation}>⇩</button>
-              <button aria-label="Hoàn tác nét cuối" onClick={undoDrawing} disabled={!canUndo}>↶</button>
-              <button aria-label="Xóa nét" onClick={clearDrawing}>
-                ♲
-              </button>
+              <button aria-label="Phóng to slide" onClick={toggleSlideFullscreen}>⛶</button>
+              <button className="askAiButton" aria-label="Hỏi AI" onClick={openTutorChat}>✦ Hỏi AI</button>
             </div>
           </div>
 
@@ -726,18 +717,18 @@ export default function Home() {
               <p>Trợ lý học theo ngữ cảnh</p>
             </div>
             <div className="tutorHeaderActions">
-              <button aria-label="Lịch sử" onClick={loadHistory} disabled={isHistoryLoading}>{isHistoryLoading ? "…" : "↶"}</button>
+              <button aria-label="Lịch sử" onClick={loadHistory} disabled={isHistoryLoading}>{isHistoryLoading ? "…" : "◷"}</button>
               <button aria-label="Cuộc trò chuyện mới" onClick={resetConversation}>
                 ＋
               </button>
               <span className="slideContextPill">Trang slide: {currentSlide.page}</span>
+              <button aria-label="Thu gọn khung chat" onClick={() => setIsTutorOpen(false)}>›</button>
             </div>
           </div>
 
           <div className="quotaRow">
             <span>Quota Tutor trong ngày</span>
             <span>{quotaUsed} / 30 câu</span>
-            <span className="byokPill">⚿ BYOK</span>
           </div>
           <div className="quotaTrack">
             <span style={{ width: `${Math.max(1, (quotaUsed / 30) * 100)}%` }} />
@@ -758,14 +749,6 @@ export default function Home() {
               >
                 Case khó
               </button>
-            </div>
-          </div>
-
-          <div className="contextBanner">
-            <span className="statusDot" />
-            <div>
-              <strong>Ngữ cảnh đã đồng bộ</strong>
-              <small>Slide trang {currentSlide.page} · {annotationTool === "read" ? "Đang ở chế độ đọc" : "Sẵn sàng khoanh vùng"}</small>
             </div>
           </div>
 
