@@ -28,7 +28,7 @@ export type TutorAnalysis = {
   evidence: string;
 };
 
-export const DEFAULT_QUESTION = "Giải thích phần tôi vừa khoanh";
+export const DEFAULT_QUESTION = "Hãy giải thích nội dung chính của slide này.";
 
 export const PEN_COLORS = [
   { name: "Đỏ", value: "#dc2626", className: "red" },

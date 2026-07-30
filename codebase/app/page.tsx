@@ -54,6 +54,7 @@ export default function Home() {
     image: string;
     selectionImage: string;
     page: number;
+    queryScope: "region" | "lesson";
   } | null>(null);
   const [analysis, setAnalysis] = useState<TutorAnalysis | null>(null);
   const [error, setError] = useState("");
@@ -68,6 +69,15 @@ export default function Home() {
   const [showHistory, setShowHistory] = useState(false);
   const [historyError, setHistoryError] = useState("");
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  const [activityEvents, setActivityEvents] = useState<Array<{
+    id: string;
+    type: "selection_created" | "question_submitted" | "llm_response" | "llm_error";
+    page: number;
+    message: string;
+    createdAt: number;
+  }>>([]);
+  const [showActivity, setShowActivity] = useState(false);
+  const [isActivityLoading, setIsActivityLoading] = useState(false);
   const [completedTurns, setCompletedTurns] = useState<Array<{
     id: string;
     question: string;
@@ -233,6 +243,7 @@ export default function Home() {
       width: Math.max(8, ((right - left) / point.width) * 100),
       height: Math.max(8, ((bottom - top) / point.height) * 100),
     });
+    recordActivity("selection_created", "Đã khoanh vùng hợp lệ để hỏi.");
   };
 
   const finishDrawing = (event: ReactPointerEvent<HTMLCanvasElement>) => {
@@ -302,7 +313,10 @@ export default function Home() {
 
   const changeSlide = (nextIndex: number) => {
     if (stage === "analyzing" || nextIndex < 0 || nextIndex >= COURSE_SLIDES.length) return;
+    const existingFollowUp = followUpContext;
     clearDrawing();
+    // Đổi trang chỉ xóa nét đang vẽ; câu hỏi tiếp theo vẫn cần được dùng ngữ cảnh vùng trước đó.
+    if (existingFollowUp) setFollowUpContext(existingFollowUp);
     setSlideIndex(nextIndex);
     requestAnimationFrame(() => {
       slideRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
@@ -383,12 +397,45 @@ export default function Home() {
     }
   };
 
+  function recordActivity(
+    type: "selection_created" | "question_submitted" | "llm_response" | "llm_error",
+    message: string,
+    page = currentSlide.page,
+  ) {
+    const item = { id: crypto.randomUUID(), type, message, page, createdAt: Date.now() };
+    setActivityEvents((current) => [item, ...current].slice(0, 30));
+    void fetch("/api/activity", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...sessionHeaders() },
+      body: JSON.stringify({ type, message, page }),
+    });
+  }
+
+  const loadActivity = async () => {
+    setIsActivityLoading(true);
+    try {
+      const response = await fetch("/api/activity", { headers: sessionHeaders() });
+      const payload = (await response.json()) as { items?: typeof activityEvents };
+      if (Array.isArray(payload.items) && payload.items.length) setActivityEvents(payload.items);
+    } finally {
+      setShowHistory(false);
+      setShowActivity(true);
+      setIsActivityLoading(false);
+    }
+  };
+
   const submitQuestion = async () => {
     const activeContext = selection
       ? null
       : followUpContext;
-    const activeSelection = selection || activeContext?.selection;
-    if (!activeSelection || !question.trim()) return;
+    const activeSelection = selection || activeContext?.selection || {
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 100,
+    };
+    const queryScope = selection ? "region" : activeContext?.queryScope || "lesson";
+    if (!question.trim()) return;
     const nextQuestion = question.trim();
     requestAbortRef.current?.abort();
     const controller = new AbortController();
@@ -396,13 +443,16 @@ export default function Home() {
     setStage("analyzing");
     setSubmittedQuestion(nextQuestion);
     setError("");
+    recordActivity("question_submitted", `Đã gửi câu hỏi: ${nextQuestion.slice(0, 120)}`);
     try {
       const capture = selection
         ? await makeSlideImage(activeSelection)
-        : activeContext && {
-          image: activeContext.image,
-          selectionImage: activeContext.selectionImage,
-        };
+        : activeContext
+          ? {
+            image: activeContext.image,
+            selectionImage: activeContext.selectionImage,
+          }
+          : await makeSlideImage(activeSelection);
       if (!capture) throw new Error("Không thể đọc ảnh của vùng vừa hỏi.");
       setCapturedImage(capture.image);
       setCapturedSelectionImage(capture.selectionImage);
@@ -415,6 +465,7 @@ export default function Home() {
           selectionImage: capture.selectionImage,
           page: activeContext?.page || currentSlide.page,
           question: nextQuestion,
+          queryScope,
           selection: activeSelection,
         }),
       });
@@ -435,12 +486,14 @@ export default function Home() {
       }
       setAnalysis(payload.analysis);
       if (payload.quota) setQuotaUsed(payload.quota.used);
+      recordActivity("llm_response", `Entropy đã phản hồi (${Math.round(payload.analysis.confidence * 100)}%).`);
       setStage(payload.analysis.needsConfirmation ? "uncertain" : "confirm");
     } catch (cause) {
       if (controller.signal.aborted) return;
       setError(
         cause instanceof Error ? cause.message : "Đã có lỗi không xác định.",
       );
+      recordActivity("llm_error", "Không nhận được phản hồi từ Entropy.");
       setStage("error");
     } finally {
       if (requestAbortRef.current === controller) requestAbortRef.current = null;
@@ -494,19 +547,25 @@ export default function Home() {
 
   const askRelatedKnowledge = (regionTitle: string) => {
     if (!followUpContext) return;
-    setQuestion(`Kiến thức liên quan đến “${regionTitle}” là gì?`);
-    setNotice("Bạn có thể hỏi thêm định nghĩa, ví dụ hoặc so sánh về phần vừa khoanh.");
+    setQuestion(`Giải thích sâu hơn và kiến thức liên quan trong bài học về “${regionTitle}”.`);
+    setNotice("Bạn có thể hỏi sâu hơn về phần vừa khoanh hoặc kiến thức liên quan trong cùng bài học.");
     requestAnimationFrame(() => composerRef.current?.focus());
   };
 
   const completeAnswer = () => {
     if (!analysis || !submittedQuestion) return;
-    const nextFollowUpContext = selection && capturedImage && capturedSelectionImage
+    const nextFollowUpContext = capturedImage && capturedSelectionImage
       ? {
-        selection,
+        selection: selection || followUpContext?.selection || {
+          x: 0,
+          y: 0,
+          width: 100,
+          height: 100,
+        },
         image: capturedImage,
         selectionImage: capturedSelectionImage,
-        page: currentSlide.page,
+        page: followUpContext?.page || currentSlide.page,
+        queryScope: selection ? "region" : followUpContext?.queryScope || "lesson",
       }
       : followUpContext;
     setCompletedTurns((current) => [
@@ -677,6 +736,7 @@ export default function Home() {
             </div>
             <div className="tutorHeaderActions">
               <button aria-label="Lịch sử" onClick={loadHistory} disabled={isHistoryLoading}>{isHistoryLoading ? "…" : "↶"}</button>
+              <button aria-label="Nhật ký backend" onClick={loadActivity} disabled={isActivityLoading}>{isActivityLoading ? "…" : "☷"}</button>
               <button aria-label="Cuộc trò chuyện mới" onClick={resetConversation}>
                 ＋
               </button>
@@ -721,8 +781,8 @@ export default function Home() {
 
           <div className="conversation">
             <div className="assistantMessage onboardingHint">
-              Xin chào! Khoanh vùng trên slide, sau đó hỏi mình về đúng phần
-              bạn chưa hiểu nhé.
+              Xin chào! Mình là trợ lý Entropy. Bạn có thể chat để hỏi về bài học,
+              hoặc khoanh vùng phần cần giải thích trên slide.
             </div>
 
             {completedTurns.map((turn, index) => (
@@ -741,7 +801,7 @@ export default function Home() {
                   <div className="responseActions">
                     {index === completedTurns.length - 1 && followUpContext ? (
                       <button className="secondaryAction" onClick={() => askRelatedKnowledge(turn.analysis.regionTitle)}>
-                        Hỏi kiến thức liên quan
+                        Hỏi sâu hơn / kiến thức bài học
                       </button>
                     ) : null}
                     <button className="primaryAction" onClick={prepareNextQuestion}>
@@ -765,6 +825,22 @@ export default function Home() {
                     <p>{item.question}</p>
                   </article>
                 )) : <p>Chưa có câu hỏi nào được lưu.</p>}
+              </div>
+            ) : null}
+
+            {showActivity ? (
+              <div className="historyPanel activityPanel">
+                <div className="historyTitle">
+                  <strong>Nhật ký backend</strong>
+                  <button onClick={() => setShowActivity(false)} aria-label="Đóng nhật ký">×</button>
+                </div>
+                {activityEvents.length ? activityEvents.map((item) => (
+                  <article key={item.id}>
+                    <span>{new Date(item.createdAt).toLocaleTimeString("vi-VN")}</span>
+                    <strong>{item.type}</strong>
+                    <p>Trang {item.page} · {item.message}</p>
+                  </article>
+                )) : <p>Chưa có hoạt động nào. Hãy khoanh vùng hoặc gửi một câu hỏi.</p>}
               </div>
             ) : null}
 
@@ -850,7 +926,7 @@ export default function Home() {
               ref={composerRef}
               value={question}
               onChange={(event) => setQuestion(event.target.value)}
-              placeholder="Nhập câu hỏi hoặc khoanh trên slide..."
+              placeholder="Hỏi về bài học hoặc khoanh vùng trên slide..."
               aria-label="Câu hỏi cho VLearn Tutor"
               rows={2}
             />
@@ -858,7 +934,6 @@ export default function Home() {
               className="sendButton"
               aria-label="Gửi câu hỏi"
               disabled={
-                (!selection && !followUpContext) ||
                 !question.trim() ||
                 !["draw", "error"].includes(stage)
               }
@@ -870,8 +945,8 @@ export default function Home() {
               {selection
                 ? `Đã nhận vùng khoanh trên trang ${currentSlide.page}`
                 : followUpContext
-                  ? "Hỏi tiếp về vùng trước, kiến thức liên quan, hoặc khoanh vùng mới"
-                : "Dùng bút khoanh một vùng để bắt đầu"}
+                  ? `Đang dùng ngữ cảnh trang ${followUpContext.page} — hỏi sâu hơn, kiến thức bài học, hoặc khoanh vùng mới`
+                : "Bạn có thể hỏi về toàn bộ bài học, hoặc khoanh vùng để hỏi chính xác"}
             </div>
             {notice ? <div className="composerNotice" role="status">{notice}</div> : null}
           </div>

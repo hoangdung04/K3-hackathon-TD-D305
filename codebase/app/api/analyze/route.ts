@@ -57,9 +57,10 @@ export async function POST(request: Request) {
       typeof input.question !== "string" ||
       !input.question.trim() ||
       input.question.trim().length > 500 ||
+      (input.queryScope !== "region" && input.queryScope !== "lesson") ||
       !validSelection(input.selection)
     ) {
-      return Response.json({ error: "Dữ liệu vùng khoanh không hợp lệ." }, { status: 400 });
+      return Response.json({ error: "Dữ liệu câu hỏi hoặc ngữ cảnh slide không hợp lệ." }, { status: 400 });
     }
 
     const apiKey = process.env.OPENAI_API_KEY;

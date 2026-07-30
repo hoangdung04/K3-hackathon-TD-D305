@@ -7,6 +7,14 @@ export type StoredAnalysis = {
   evidence: string;
 };
 
+export type ActivityEvent = {
+  id: string;
+  type: "selection_created" | "question_submitted" | "llm_response" | "llm_error";
+  page: number;
+  message: string;
+  createdAt: number;
+};
+
 type DatabaseEnv = { DB?: D1Database };
 
 export async function getD1(): Promise<D1Database | null> {
@@ -52,6 +60,20 @@ export async function ensureTutorSchema(db: D1Database) {
       `CREATE INDEX IF NOT EXISTS tutor_requests_actor_created_idx
        ON tutor_requests (actor_hash, created_at)`,
     ),
+    db.prepare(
+      `CREATE TABLE IF NOT EXISTS tutor_activity (
+        id TEXT PRIMARY KEY NOT NULL,
+        actor_hash TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        page INTEGER NOT NULL,
+        message TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      )`,
+    ),
+    db.prepare(
+      `CREATE INDEX IF NOT EXISTS tutor_activity_actor_created_idx
+       ON tutor_activity (actor_hash, created_at)`,
+    ),
   ]);
 }
 
@@ -95,6 +117,30 @@ export async function saveAnalysis(
       Date.now(),
     )
     .run();
+}
+
+export async function saveActivity(db: D1Database, actor: string, event: ActivityEvent) {
+  await db
+    .prepare(
+      `INSERT INTO tutor_activity (id, actor_hash, event_type, page, message, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    )
+    .bind(event.id, actor, event.type, event.page, event.message, event.createdAt)
+    .run();
+}
+
+export async function listActivity(db: D1Database, actor: string) {
+  const result = await db
+    .prepare(
+      `SELECT id, event_type AS type, page, message, created_at AS createdAt
+       FROM tutor_activity
+       WHERE actor_hash = ?
+       ORDER BY created_at DESC
+       LIMIT 30`,
+    )
+    .bind(actor)
+    .all<ActivityEvent>();
+  return result.results;
 }
 
 export async function listHistory(db: D1Database, actor: string) {

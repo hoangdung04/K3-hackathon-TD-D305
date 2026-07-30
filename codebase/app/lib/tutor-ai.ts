@@ -3,6 +3,7 @@ export type TutorRequest = {
   selectionImage?: string;
   page: number;
   question: string;
+  queryScope: "region" | "lesson";
   selection: { x: number; y: number; width: number; height: number };
 };
 
@@ -28,13 +29,15 @@ export const tutorAnalysisSchema = {
 
 export function buildTutorPrompt(input: TutorRequest) {
   return [
-    "Bạn là VLearn Tutor, trợ giảng tiếng Việt đọc nội dung trong vùng học viên khoanh trên slide.",
+    "Bạn là VLearn Tutor, trợ giảng tiếng Việt trả lời theo nội dung slide/bài học.",
     "Ảnh đầu là toàn bộ slide và nét bút đỏ. Nếu có ảnh thứ hai, đó là ảnh cắt chính xác quanh vùng khoanh; ưu tiên ảnh cắt này để đọc nội dung, rồi dùng ảnh slide đầy đủ để lấy ngữ cảnh câu.",
     JSON.stringify(input.selection),
     `Trang: ${input.page}. Câu hỏi: ${input.question}`,
-    "Xác định nội dung nằm trong hoặc sát nét khoanh; không suy diễn nội dung không thấy trên ảnh khi mô tả vùng hoặc nêu evidence.",
-    "Người học có thể hỏi kiến thức liên quan trực tiếp đến vùng đã khoanh (định nghĩa, ví dụ, so sánh hoặc ứng dụng). Nếu câu hỏi liên quan rõ, được phép giải thích ngắn bằng kiến thức nền, nhưng phải nói rõ đó là phần liên hệ thêm chứ không phải chữ trích từ slide. evidence vẫn chỉ được mô tả nội dung nhìn thấy trên slide.",
-    "Nếu câu hỏi không liên quan rõ đến vùng đang khoanh, không tự chuyển sang chủ đề khác; yêu cầu người học khoanh vùng mới.",
+    input.queryScope === "lesson"
+      ? "Đây là câu hỏi về toàn bộ slide/bài học, không có vùng khoanh riêng. Hãy dùng toàn bộ slide làm ngữ cảnh; regionTitle phải là 'Toàn bộ slide' và không yêu cầu khoanh lại chỉ vì không có nét bút."
+      : "Đây là câu hỏi về vùng đã khoanh. Xác định nội dung nằm trong hoặc sát nét khoanh; không suy diễn nội dung không thấy trên ảnh khi mô tả vùng hoặc nêu evidence.",
+    "Người học có thể hỏi sâu hơn về vùng đã khoanh hoặc hỏi kiến thức liên quan trong cùng slide/bài học (định nghĩa, ví dụ, so sánh, ứng dụng hay kiến thức nền). Nếu câu hỏi liên quan rõ, được phép giải thích bằng kiến thức nền nhưng phải nói rõ đó là phần 'liên hệ thêm', không phải chữ trích từ slide. evidence vẫn chỉ được mô tả nội dung nhìn thấy trên slide.",
+    "Nếu câu hỏi không liên quan rõ đến vùng đang khoanh hoặc nội dung của slide/bài học hiện tại, không tự chuyển sang chủ đề khác; yêu cầu người học khoanh vùng mới.",
     "Nếu vùng chạm nhiều khối nội dung, hoặc đồng thời có tiêu đề và đoạn mô tả, hoặc quá nhỏ/mơ hồ: bắt buộc needsConfirmation=true và confidence dưới 0.7.",
     "Nếu trong vùng không có nội dung đọc được, chỉ có nền trống, nét kẻ linh tinh hoặc dấu chấm: bắt buộc requiresRedraw=true, needsConfirmation=true, confidence không quá 0.49. confirmationQuestion phải yêu cầu: 'Mình chưa thấy nội dung trong vùng này. Bạn hãy khoanh lại trọn phần chữ/hình cần hỏi nhé.' Không được trả lời hoặc cho phép dùng vùng này.",
     "Với vùng chỉ có 1-2 từ, hãy kiểm tra trước xem đó có phải keyword/thuật ngữ/nhãn có nghĩa độc lập hay không (ví dụ: Zero-shot). Chỉ khi đúng mới giải thích bình thường.",
