@@ -192,7 +192,8 @@ textarea:focus-visible {
 .workspace {
   height: calc(100vh - 72px);
   display: grid;
-  grid-template-columns: minmax(420px, 1.08fr) minmax(330px, 0.92fr);
+  /* Desktop: slide reader receives two thirds, tutor receives one third. */
+  grid-template-columns: minmax(600px, 2fr) minmax(360px, 1fr);
   grid-template-rows: minmax(0, 1fr);
   overflow: hidden;
 }
@@ -345,23 +346,24 @@ textarea:focus-visible {
   letter-spacing: 0.08em;
 }
 
-.strokePreview {
-  position: relative;
-  width: 52px;
-  height: 6px;
-  background: #d5dbe5;
-  border-radius: 999px;
+.strokeControl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.strokePreview::before {
-  position: absolute;
-  top: -4px;
-  left: 16px;
-  width: 14px;
-  height: 14px;
-  content: "";
-  background: #264b7d;
-  border-radius: 50%;
+.strokeRange {
+  width: 82px;
+  margin: 0;
+  accent-color: #264b7d;
+  cursor: pointer;
+}
+
+.strokeValue {
+  min-width: 26px;
+  color: #52647d;
+  font-size: 10px;
+  font-weight: 750;
 }
 
 .slidesViewport {
@@ -376,7 +378,7 @@ textarea:focus-visible {
   position: relative;
   z-index: 7;
   width: min(100%, 760px);
-  margin: -110px auto 126px;
+  margin: 22px auto 0;
   padding: 10px;
   background: rgba(244, 247, 251, 0.96);
   border: 1px solid #dce4ef;
@@ -397,36 +399,42 @@ textarea:focus-visible {
 .slideTestPicker > div {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 7px;
+  gap: 6px;
 }
 
 .slideThumb {
   min-width: 0;
-  min-height: 72px;
-  display: grid;
-  align-content: center;
-  gap: 3px;
-  padding: 8px;
+  height: 76px;
+  min-height: 0;
+  position: relative;
+  display: block;
+  padding: 0;
   color: #fff;
+  background: linear-gradient(135deg, #184d8d, #0f3260);
   border: 2px solid transparent;
   border-radius: 9px;
   cursor: pointer;
   text-align: left;
-}
-
-.slideThumb small,
-.slideThumb i {
-  color: rgba(255, 255, 255, 0.72);
-  font-size: 8px;
-  font-style: normal;
-}
-
-.slideThumb strong {
   overflow: hidden;
-  font-size: 9px;
-  line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+.slideThumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.slideThumbCaption {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  padding: 3px 5px;
+  color: #fff;
+  background: rgba(8, 29, 59, 0.76);
+  border-radius: 5px;
+  font-size: 8px;
+  font-weight: 800;
 }
 
 .slideThumb.active {
@@ -500,6 +508,14 @@ textarea:focus-visible {
   background: #31598f;
   border-radius: 6px;
   box-shadow: 0 3px 8px rgba(26, 48, 83, 0.14);
+}
+
+.slideImage {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  user-select: none;
 }
 
 .slideArtwork {
@@ -637,6 +653,45 @@ textarea:focus-visible {
   pointer-events: none;
 }
 
+.slideCanvas.readyToDraw {
+  animation: draw-ready-glow 1.2s ease-in-out 2;
+}
+
+.drawAgainPrompt {
+  position: absolute;
+  z-index: 4;
+  top: 50%;
+  left: 50%;
+  padding: 10px 14px;
+  color: #fff;
+  background: rgba(31, 63, 143, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 999px;
+  box-shadow: 0 10px 24px rgba(20, 48, 108, 0.28);
+  font-size: 12px;
+  font-weight: 750;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  animation: draw-prompt-pop 0.34s ease-out both;
+}
+
+@keyframes draw-ready-glow {
+  50% {
+    box-shadow: 0 0 0 7px rgba(49, 103, 205, 0.36), 0 18px 36px rgba(31, 63, 143, 0.2);
+  }
+}
+
+@keyframes draw-prompt-pop {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -40%) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
 .detectedBox {
   position: absolute;
   z-index: 4;
@@ -659,6 +714,16 @@ textarea:focus-visible {
   font-size: 10px;
   font-weight: 750;
   white-space: nowrap;
+}
+
+.detectedBox.selectionReady {
+  border-color: #20a464;
+  border-style: solid;
+  box-shadow: none;
+}
+
+.detectedBox.selectionReady span {
+  background: #198754;
 }
 
 .noteHint {
@@ -703,11 +768,18 @@ textarea:focus-visible {
 
 .previewArtwork {
   min-height: 210px;
-  padding: 24px;
+  padding: 0;
   color: #17305a;
   background: #fff;
   border: 1px solid #ecedf0;
-  border-top: 10px solid #315b94;
+  overflow: hidden;
+}
+
+.previewArtwork img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
 }
 
 .previewArtwork h3 {
@@ -964,6 +1036,14 @@ textarea:focus-visible {
   box-shadow: 0 3px 11px rgba(41, 57, 85, 0.06);
 }
 
+.assistantMessage.onboardingHint {
+  color: #66748a;
+  background: #f8fafc;
+  border-style: dashed;
+  box-shadow: none;
+  opacity: 0.6;
+}
+
 .studentMessage {
   margin-left: auto;
   color: #fff;
@@ -1008,22 +1088,31 @@ textarea:focus-visible {
 }
 
 .loadingCard {
-  grid-template-columns: 22px 1fr;
+  grid-template-columns: 30px 1fr;
   align-items: center;
 }
 
-.loadingCard p {
-  grid-column: 2;
+.typingDots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
-.visionSpinner {
-  grid-row: 1 / span 2;
-  width: 20px;
-  height: 20px;
-  border: 2px solid #cbd8ed;
-  border-top-color: var(--blue);
+.typingDots i {
+  width: 6px;
+  height: 6px;
+  display: block;
   border-radius: 50%;
-  animation: vision-spin 0.8s linear infinite;
+  background: var(--blue);
+  animation: typing-dot 1.05s ease-in-out infinite;
+}
+
+.typingDots i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.typingDots i:nth-child(3) {
+  animation-delay: 0.3s;
 }
 
 .errorCard {
@@ -1075,9 +1164,15 @@ textarea:focus-visible {
   font-size: 11px;
 }
 
-@keyframes vision-spin {
-  to {
-    transform: rotate(360deg);
+@keyframes typing-dot {
+  0%, 60%, 100% {
+    opacity: 0.42;
+    transform: translateY(0);
+  }
+
+  30% {
+    opacity: 1;
+    transform: translateY(-5px);
   }
 }
 

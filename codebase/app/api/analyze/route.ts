@@ -15,7 +15,7 @@ import {
 
 export const runtime = "edge";
 const MAX_IMAGE_LENGTH = 4_500_000;
-const DAILY_LIMIT = 15;
+const DAILY_LIMIT = 30;
 const ALLOWED_IMAGE_PREFIXES = [
   "data:image/png;base64,",
   "data:image/jpeg;base64,",
@@ -57,6 +57,7 @@ export async function POST(request: Request) {
       typeof input.question !== "string" ||
       !input.question.trim() ||
       input.question.trim().length > 500 ||
+      (input.queryScope !== "region" && input.queryScope !== "lesson") ||
       !validSelection(input.selection)
     ) {
       return Response.json({ error: "Dữ liệu vùng khoanh không hợp lệ." }, { status: 400 });
@@ -88,7 +89,7 @@ export async function POST(request: Request) {
     }
     if (used >= DAILY_LIMIT) {
       return Response.json(
-        { error: "Bạn đã dùng hết 15 câu Tutor trong hôm nay.", quota: { used, limit: DAILY_LIMIT } },
+        { error: `Bạn đã dùng hết ${DAILY_LIMIT} câu Tutor trong hôm nay.`, quota: { used, limit: DAILY_LIMIT } },
         { status: 429, headers: { "retry-after": "86400" } },
       );
     }
