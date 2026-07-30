@@ -50,6 +50,23 @@ repo/
 └── reflection/        ← mỗi người 1 file
 ```
 
+## Bài nộp của nhóm — Khoanh để hỏi (VLearn Tutor)
+
+Nhóm chọn hướng **A — VLearn**, làm một lát cắt “Khoanh để hỏi”: học viên khoanh
+vùng trên tài liệu/slide, hỏi một câu, và Tutor xác nhận vùng đang đọc trước khi
+giải thích. Mục tiêu là giảm trả lời lệch vùng được chọn và để học viên có cách
+sửa nhanh khi AI hiểu sai vùng.
+
+| Thành viên | Phần chịu trách nhiệm | Artifact chính |
+|---|---|---|
+| Hoàng Mạnh Dũng — Tool & UI | Flow PDF/slide, khoanh vùng, trải nghiệm UI, demo | `codebase/`, `demo-slides/` |
+| Trần Việt Trường — Evaluation & Report | Evidence, golden set, chạy đánh giá, validation và báo cáo | `spec.md`, `eval/`, `validation/`, `reflection/` |
+
+- [AI Spec](spec.md) — quyết định sản phẩm, quality bar và các kịch bản lỗi.
+- [Bảng chia việc](TEAM_TASKS.md) — owner, nhánh/PR và điều kiện bàn giao.
+- [Prototype](codebase/README.md) — Working prototype; API key chỉ cấu hình local/secret store.
+- [Đánh giá](eval/README.md), [validation](validation/feedback-log.md), [reflection](reflection/README.md) — các log phải được cập nhật bằng kết quả thực tế, không điền số liệu minh hoạ thành kết quả.
+
 ## Chấm điểm
 
 Tổng **100 điểm = 25 điểm nộp checkpoint + 75 điểm chấm bài nộp**. Chi tiết từng ý điểm: `04-rubric.md`.

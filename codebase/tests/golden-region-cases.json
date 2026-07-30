@@ -1,0 +1,23 @@
+[
+  {
+    "id": "title-only",
+    "selection": { "x": 5, "y": 28, "width": 48, "height": 24 },
+    "expectedRegion": "Advanced Prompting Techniques",
+    "needsConfirmation": false,
+    "minimumConfidence": 0.7
+  },
+  {
+    "id": "title-and-description",
+    "selection": { "x": 4, "y": 26, "width": 62, "height": 42 },
+    "expectedRegion": "tiêu đề và phần mô tả",
+    "needsConfirmation": true,
+    "maximumConfidence": 0.69
+  },
+  {
+    "id": "too-small",
+    "selection": { "x": 50, "y": 50, "width": 8, "height": 8 },
+    "expectedRegion": "vùng quá nhỏ",
+    "needsConfirmation": true,
+    "maximumConfidence": 0.69
+  }
+]
