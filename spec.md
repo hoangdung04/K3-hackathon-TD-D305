@@ -19,7 +19,7 @@
 | Median latency 1.758 ms, p90 3.686 ms, max 23.848 ms | Cần trạng thái đang xử lý, timeout và không “giả vờ đã xong”. |
 | 33 đánh giá up, 37 down, phần lớn chưa rating | Validation trực tiếp cần hỏi định tính thay vì suy diễn hài lòng từ rating thưa. |
 
-**Log còn thiếu để đạt evidence chuẩn B:** Trần Việt Trường sẽ bổ sung ít nhất 5 đoạn trích ngắn, được phép dùng, từ các `turn_id` ẩn danh vào `eval/evidence-mining.md`; không dán chatlog thô hay thông tin nhận diện vào repo.
+**Evidence kiểm lại được:** [eval/evidence-mining.md](eval/evidence-mining.md) lưu phương pháp đếm và 5 đoạn trích ngắn theo `turn_id` ẩn danh. Repo không dán chatlog thô hay thông tin nhận diện.
 
 ## §2. Impact & quyết định chọn
 

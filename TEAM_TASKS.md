@@ -20,7 +20,7 @@ GitHub Issues đang tắt ở repo này, nên nhóm dùng file này làm task bo
 - [x] Prototype Working đã được đưa vào `codebase/`; `.env.local`, `node_modules`, build output bị loại khỏi repo.
 - [ ] Hoàng: PDF/document input thật hoặc nêu rõ slide demo là giới hạn prototype.
 - [ ] Hoàng: tạo `demo-slides.pdf` 6 trang sau dry-run.
-- [ ] Trường: bổ sung 5 evidence quote ngắn có `turn_id` vào `eval/evidence-mining.md` theo quy định data.
+- [x] Trường: bổ sung 5 evidence quote ngắn có `turn_id` vào `eval/evidence-mining.md` theo quy định data.
 - [ ] Trường: chạy 20 case AI thật và ghi toàn bộ kết quả vào `eval/vision-run-log.md`.
 - [ ] Trường: user validation ≥5 mẩu từ ≥5 người ngoài nhóm vào `validation/feedback-log.md`.
 - [ ] Cả hai: chọn thay đổi từ feedback/case fail và ghi vào `spec.md` §9.
