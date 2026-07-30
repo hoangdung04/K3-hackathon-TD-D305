@@ -22,14 +22,16 @@ async function render() {
   );
 }
 
-test("server-renders the VLearn CP3 Vision experience", async () => {
+test("server-renders the VLearn CP3 experience with the Khoá 1 source slides", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
   assert.match(html, /<title>Khoanh để hỏi · VLearn Tutor CP3<\/title>/i);
-  assert.match(html, /day04-prompt-engineering-tool-calling\.pdf/);
+  assert.match(html, /d1-slide-hackathon\.pdf/);
+  assert.match(html, /10 TRANG BÀI GIẢNG KHOÁ 1/);
+  assert.match(html, /vlearn-day1-page-01\.png/);
   assert.match(html, /VLearn Tutor/);
   assert.match(html, /Case chuẩn/);
   assert.match(html, /Case khó/);

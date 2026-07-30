@@ -36,13 +36,20 @@ function validSelection(selection: Partial<TutorRequest["selection"]> | undefine
   );
 }
 
+function validImage(image: unknown) {
+  return (
+    typeof image === "string" &&
+    ALLOWED_IMAGE_PREFIXES.some((prefix) => image.startsWith(prefix)) &&
+    image.length <= MAX_IMAGE_LENGTH
+  );
+}
+
 export async function POST(request: Request) {
   try {
     const input = (await request.json()) as Partial<TutorRequest>;
     if (
-      typeof input.image !== "string" ||
-      !ALLOWED_IMAGE_PREFIXES.some((prefix) => input.image!.startsWith(prefix)) ||
-      input.image.length > MAX_IMAGE_LENGTH ||
+      !validImage(input.image) ||
+      (input.selectionImage !== undefined && !validImage(input.selectionImage)) ||
       typeof input.page !== "number" ||
       !Number.isInteger(input.page) ||
       input.page < 1 ||
@@ -58,7 +65,10 @@ export async function POST(request: Request) {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
       return Response.json(
-        { error: "CP3 cần OPENAI_API_KEY để chạy phân tích Vision thật." },
+        {
+          error: "Tutor chưa được cấu hình OPENAI_API_KEY trên server. Hãy thêm key riêng vào .env.local rồi khởi động lại app.",
+          code: "missing_api_key",
+        },
         { status: 503 },
       );
     }
@@ -108,7 +118,7 @@ export async function POST(request: Request) {
     if (!upstream.ok) {
       const maybeError = payload as { error?: { message?: string } };
       return Response.json(
-        { error: maybeError.error?.message || "OpenAI Vision tạm thời không phản hồi." },
+        { error: maybeError.error?.message || "Entropy tạm thời không phản hồi." },
         { status: upstream.status },
       );
     }

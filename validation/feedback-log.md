@@ -2,6 +2,8 @@
 
 > Mục tiêu rubric: ít nhất 5 mẩu feedback từ 5 người ngoài nhóm, trong đó có ít nhất 2 willing users đã khai trước. Chỉ ghi sau khi người tham gia đồng ý; không thu PII không cần thiết.
 
+Xem [CP5 runbook](cp5-runbook.md) để chạy test, ghi consent, tổng hợp quote và bấm giờ demo. Trạng thái hiện tại: **chưa có feedback người dùng được ghi nhận**.
+
 ## Kịch bản test
 
 1. Mở một slide/tài liệu mẫu, khoanh đoạn đang chưa hiểu và hỏi một câu.

@@ -1,0 +1,238 @@
+{
+  "runAt": "2026-07-30T16:02:39.884Z",
+  "model": "gpt-5.6-terra",
+  "total": 20,
+  "passed": 17,
+  "passRate": 0.85,
+  "results": [
+    {
+      "id": "normal-01-title-full",
+      "category": "normal",
+      "pass": true,
+      "failures": [],
+      "confidence": 0.93,
+      "needsConfirmation": false,
+      "requiresRedraw": false,
+      "regionTitle": "Advanced Prompting Techniques",
+      "latencyMs": 4223
+    },
+    {
+      "id": "normal-02-title-advanced",
+      "category": "normal",
+      "pass": true,
+      "failures": [],
+      "confidence": 0.96,
+      "needsConfirmation": false,
+      "requiresRedraw": false,
+      "regionTitle": "Advanced Prompting Techniques",
+      "latencyMs": 2953
+    },
+    {
+      "id": "normal-03-title-prompting",
+      "category": "normal",
+      "pass": true,
+      "failures": [],
+      "confidence": 0.93,
+      "needsConfirmation": false,
+      "requiresRedraw": false,
+      "regionTitle": "Prompting Techniques",
+      "latencyMs": 12385
+    },
+    {
+      "id": "normal-04-title-techniques",
+      "category": "normal",
+      "pass": false,
+      "failures": [
+        "nhận diện vùng thiếu token: techniques",
+        "confidence 0.45 thấp hơn 0.7"
+      ],
+      "confidence": 0.45,
+      "needsConfirmation": true,
+      "requiresRedraw": true,
+      "regionTitle": "Mảnh tiêu đề trên slide 11",
+      "latencyMs": 6152
+    },
+    {
+      "id": "normal-05-title-wide",
+      "category": "normal",
+      "pass": true,
+      "failures": [],
+      "confidence": 0.91,
+      "needsConfirmation": false,
+      "requiresRedraw": false,
+      "regionTitle": "Advanced Prompting Techniques",
+      "latencyMs": 4503
+    },
+    {
+      "id": "normal-06-title-top",
+      "category": "normal",
+      "pass": true,
+      "failures": [],
+      "confidence": 0.93,
+      "needsConfirmation": false,
+      "requiresRedraw": false,
+      "regionTitle": "Advanced Prompting Techniques",
+      "latencyMs": 3530
+    },
+    {
+      "id": "normal-07-title-center",
+      "category": "normal",
+      "pass": true,
+      "failures": [],
+      "confidence": 0.93,
+      "needsConfirmation": false,
+      "requiresRedraw": false,
+      "regionTitle": "Prompting Techniques",
+      "latencyMs": 4146
+    },
+    {
+      "id": "normal-08-title-bottom",
+      "category": "normal",
+      "pass": false,
+      "failures": [
+        "nhận diện vùng thiếu token: techniques",
+        "confidence 0.45 thấp hơn 0.7"
+      ],
+      "confidence": 0.45,
+      "needsConfirmation": true,
+      "requiresRedraw": true,
+      "regionTitle": "Cụm từ chưa đủ ngữ cảnh",
+      "latencyMs": 4282
+    },
+    {
+      "id": "normal-09-title-compact",
+      "category": "normal",
+      "pass": true,
+      "failures": [],
+      "confidence": 0.96,
+      "needsConfirmation": false,
+      "requiresRedraw": false,
+      "regionTitle": "Advanced Prompting Techniques",
+      "latencyMs": 4329
+    },
+    {
+      "id": "normal-10-title-context",
+      "category": "normal",
+      "pass": false,
+      "failures": [
+        "nhận diện vùng thiếu token: advanced, prompting, techniques",
+        "confidence 0.65 thấp hơn 0.7"
+      ],
+      "confidence": 0.65,
+      "needsConfirmation": true,
+      "requiresRedraw": false,
+      "regionTitle": "Tiêu đề và mô tả trên slide 11",
+      "latencyMs": 3390
+    },
+    {
+      "id": "risk-01-title-description",
+      "category": "ambiguity",
+      "pass": true,
+      "failures": [],
+      "confidence": 0.62,
+      "needsConfirmation": true,
+      "requiresRedraw": false,
+      "regionTitle": "Advanced Prompting Techniques",
+      "latencyMs": 2876
+    },
+    {
+      "id": "risk-02-whole-left-pane",
+      "category": "ambiguity",
+      "pass": true,
+      "failures": [],
+      "confidence": 0.62,
+      "needsConfirmation": true,
+      "requiresRedraw": false,
+      "regionTitle": "Tiêu đề và mô tả trên slide 11",
+      "latencyMs": 3419
+    },
+    {
+      "id": "risk-03-tiny-center",
+      "category": "tiny",
+      "pass": true,
+      "failures": [],
+      "confidence": 0.42,
+      "needsConfirmation": true,
+      "requiresRedraw": true,
+      "regionTitle": "Vùng nền có số lớn",
+      "latencyMs": 5562
+    },
+    {
+      "id": "risk-04-tiny-corner",
+      "category": "tiny",
+      "pass": true,
+      "failures": [],
+      "confidence": 0.3,
+      "needsConfirmation": true,
+      "requiresRedraw": true,
+      "regionTitle": "Vùng góc trên bên trái",
+      "latencyMs": 3585
+    },
+    {
+      "id": "risk-05-tiny-description",
+      "category": "tiny",
+      "pass": true,
+      "failures": [],
+      "confidence": 0.45,
+      "needsConfirmation": true,
+      "requiresRedraw": true,
+      "regionTitle": "Mảnh cụm từ trong đoạn mô tả",
+      "latencyMs": 7450
+    },
+    {
+      "id": "risk-06-blank-right",
+      "category": "no-content",
+      "pass": true,
+      "failures": [],
+      "confidence": 0.35,
+      "needsConfirmation": true,
+      "requiresRedraw": true,
+      "regionTitle": "Vùng ký tự mờ",
+      "latencyMs": 4793
+    },
+    {
+      "id": "risk-07-blank-bottom",
+      "category": "no-content",
+      "pass": true,
+      "failures": [],
+      "confidence": 0.35,
+      "needsConfirmation": true,
+      "requiresRedraw": true,
+      "regionTitle": "Vùng trống ở góc dưới bên phải slide",
+      "latencyMs": 3525
+    },
+    {
+      "id": "risk-08-overlap-title-copy",
+      "category": "ambiguity",
+      "pass": true,
+      "failures": [],
+      "confidence": 0.62,
+      "needsConfirmation": true,
+      "requiresRedraw": false,
+      "regionTitle": "Tiêu đề và mô tả",
+      "latencyMs": 3789
+    },
+    {
+      "id": "risk-09-fragment-title",
+      "category": "fragment",
+      "pass": true,
+      "failures": [],
+      "confidence": 0.45,
+      "needsConfirmation": true,
+      "requiresRedraw": true,
+      "regionTitle": "Cụm chữ trong tiêu đề slide",
+      "latencyMs": 4915
+    },
+    {
+      "id": "risk-10-fragment-copy",
+      "category": "fragment",
+      "pass": true,
+      "failures": [],
+      "confidence": 0.45,
+      "needsConfirmation": true,
+      "requiresRedraw": true,
+      "regionTitle": "Mảnh câu trong đoạn mô tả",
+      "latencyMs": 4990
+    }
+  ]
+}
