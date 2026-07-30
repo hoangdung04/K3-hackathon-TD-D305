@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   useEffect,
   useRef,
@@ -15,6 +16,7 @@ type Stage =
   | "answer"
   | "error";
 type Scenario = "normal" | "hard";
+type AnnotationTool = "read" | "pen" | "highlight";
 
 type SelectionBox = {
   x: number;
@@ -35,6 +37,14 @@ type TutorAnalysis = {
 };
 
 const DEFAULT_QUESTION = "Giải thích phần tôi vừa khoanh";
+const PEN_COLORS = [
+  { name: "Đỏ", value: "#dc2626", className: "red" },
+  { name: "Xanh dương", value: "#2563eb", className: "blue" },
+  { name: "Xanh lá", value: "#16a34a", className: "green" },
+  { name: "Vàng", value: "#ca8a04", className: "yellow" },
+  { name: "Cam", value: "#f59e0b", className: "orange" },
+  { name: "Đen", value: "#111827", className: "black" },
+] as const;
 const TEST_SLIDES = [
   {
     page: 10,
@@ -83,6 +93,9 @@ export default function Home() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const slideRef = useRef<HTMLDivElement>(null);
   const drawingRef = useRef(false);
+  const drawingHistoryRef = useRef<ImageData[]>([]);
+  const requestAbortRef = useRef<AbortController | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
   const boundsRef = useRef({
     minX: Number.POSITIVE_INFINITY,
     minY: Number.POSITIVE_INFINITY,
@@ -92,6 +105,10 @@ export default function Home() {
 
   const [stage, setStage] = useState<Stage>("draw");
   const [scenario, setScenario] = useState<Scenario>("normal");
+  const [annotationTool, setAnnotationTool] = useState<AnnotationTool>("pen");
+  const [penColor, setPenColor] = useState<(typeof PEN_COLORS)[number]["value"]>("#dc2626");
+  const [zoom, setZoom] = useState(1);
+  const [canUndo, setCanUndo] = useState(false);
   const [question, setQuestion] = useState(DEFAULT_QUESTION);
   const [selection, setSelection] = useState<SelectionBox | null>(null);
   const [analysis, setAnalysis] = useState<TutorAnalysis | null>(null);
@@ -105,6 +122,10 @@ export default function Home() {
     createdAt: number;
   }>>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [historyError, setHistoryError] = useState("");
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  const [feedback, setFeedback] = useState<"up" | "down" | null>(null);
+  const [notice, setNotice] = useState("");
   const [slideIndex, setSlideIndex] = useState(1);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const currentSlide = TEST_SLIDES[slideIndex];
@@ -120,7 +141,7 @@ export default function Home() {
       canvas.height = rect.height * ratio;
       const context = canvas.getContext("2d");
       if (!context) return;
-      context.scale(ratio, ratio);
+      context.setTransform(ratio, 0, 0, ratio, 0, 0);
       context.lineCap = "round";
       context.lineJoin = "round";
       context.lineWidth = 4;
@@ -131,7 +152,7 @@ export default function Home() {
     const observer = new ResizeObserver(resizeCanvas);
     observer.observe(canvas);
     return () => observer.disconnect();
-  }, []);
+  }, [zoom]);
 
   const canvasPoint = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -144,11 +165,15 @@ export default function Home() {
   };
 
   const startDrawing = (event: ReactPointerEvent<HTMLCanvasElement>) => {
-    if (stage !== "draw") return;
+    if (stage !== "draw" || annotationTool === "read") return;
     const point = canvasPoint(event);
     const context = event.currentTarget.getContext("2d");
     if (!context) return;
 
+    drawingHistoryRef.current.push(
+      context.getImageData(0, 0, event.currentTarget.width, event.currentTarget.height),
+    );
+    setCanUndo(true);
     event.currentTarget.setPointerCapture(event.pointerId);
     drawingRef.current = true;
     boundsRef.current = {
@@ -158,11 +183,14 @@ export default function Home() {
       maxY: point.y,
     };
     context.beginPath();
+    context.globalAlpha = annotationTool === "highlight" ? 0.34 : 1;
+    context.lineWidth = annotationTool === "highlight" ? 18 : 4;
+    context.strokeStyle = penColor;
     context.moveTo(point.x, point.y);
   };
 
   const draw = (event: ReactPointerEvent<HTMLCanvasElement>) => {
-    if (!drawingRef.current || stage !== "draw") return;
+    if (!drawingRef.current || stage !== "draw" || annotationTool === "read") return;
     const point = canvasPoint(event);
     const context = event.currentTarget.getContext("2d");
     if (!context) return;
@@ -179,14 +207,17 @@ export default function Home() {
 
   const finishDrawing = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     if (!drawingRef.current) return;
-    drawingRef.current = false;
     const point = canvasPoint(event);
+    const context = event.currentTarget.getContext("2d");
+    context?.lineTo(point.x, point.y);
+    context?.stroke();
+    drawingRef.current = false;
     const bounds = boundsRef.current;
     const padding = 12;
     const left = Math.max(0, bounds.minX - padding);
     const top = Math.max(0, bounds.minY - padding);
-    const right = Math.min(point.width, bounds.maxX + padding);
-    const bottom = Math.min(point.height, bounds.maxY + padding);
+    const right = Math.min(point.width, Math.max(bounds.maxX, point.x) + padding);
+    const bottom = Math.min(point.height, Math.max(bounds.maxY, point.y) + padding);
 
     setSelection({
       x: (left / point.width) * 100,
@@ -202,15 +233,41 @@ export default function Home() {
       const context = canvas.getContext("2d");
       context?.clearRect(0, 0, canvas.width, canvas.height);
     }
+    drawingHistoryRef.current = [];
+    setCanUndo(false);
     setSelection(null);
     setAnalysis(null);
     setCapturedImage(null);
     setError("");
+    setFeedback(null);
     setStage("draw");
   };
 
+  const undoDrawing = () => {
+    const canvas = canvasRef.current;
+    const previous = drawingHistoryRef.current.pop();
+    if (!canvas || !previous) return;
+    canvas.getContext("2d")?.putImageData(previous, 0, 0);
+    setCanUndo(drawingHistoryRef.current.length > 0);
+    setSelection(null);
+    setAnalysis(null);
+    setCapturedImage(null);
+    setFeedback(null);
+    setStage("draw");
+  };
+
+  const downloadAnnotation = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const link = document.createElement("a");
+    link.href = canvas.toDataURL("image/png");
+    link.download = `vlearn-annotation-page-${currentSlide.page}.png`;
+    link.click();
+    setNotice("Đã tải ảnh nét khoanh xuống máy.");
+  };
+
   const changeSlide = (nextIndex: number) => {
-    if (nextIndex < 0 || nextIndex >= TEST_SLIDES.length) return;
+    if (stage === "analyzing" || nextIndex < 0 || nextIndex >= TEST_SLIDES.length) return;
     clearDrawing();
     setSlideIndex(nextIndex);
   };
@@ -279,15 +336,27 @@ export default function Home() {
   };
 
   const loadHistory = async () => {
-    const response = await fetch("/api/history", { headers: sessionHeaders() });
-    if (!response.ok) return;
-    const payload = (await response.json()) as { items: typeof history };
-    setHistory(payload.items);
-    setShowHistory(true);
+    setHistoryError("");
+    setIsHistoryLoading(true);
+    try {
+      const response = await fetch("/api/history", { headers: sessionHeaders() });
+      if (!response.ok) throw new Error("Chưa thể tải lịch sử lúc này.");
+      const payload = (await response.json()) as { items: typeof history };
+      setHistory(payload.items);
+      setShowHistory(true);
+    } catch (cause) {
+      setHistoryError(cause instanceof Error ? cause.message : "Chưa thể tải lịch sử lúc này.");
+      setShowHistory(true);
+    } finally {
+      setIsHistoryLoading(false);
+    }
   };
 
   const submitQuestion = async () => {
     if (!selection || !question.trim()) return;
+    requestAbortRef.current?.abort();
+    const controller = new AbortController();
+    requestAbortRef.current = controller;
     setStage("analyzing");
     setError("");
     try {
@@ -296,6 +365,7 @@ export default function Home() {
       const response = await fetch("/api/analyze", {
         method: "POST",
         headers: { "content-type": "application/json", ...sessionHeaders() },
+        signal: controller.signal,
         body: JSON.stringify({
           image,
           page: currentSlide.page,
@@ -303,9 +373,16 @@ export default function Home() {
           selection,
         }),
       });
-      const payload = (await response.json()) as
+      const responseText = await response.text();
+      let payload: (
         | { analysis: TutorAnalysis; quota?: { used: number; limit: number } }
-        | { error: string };
+        | { error: string }
+      );
+      try {
+        payload = JSON.parse(responseText) as typeof payload;
+      } catch {
+        throw new Error("Máy chủ trả về phản hồi không hợp lệ. Hãy thử lại.");
+      }
       if (!response.ok || !("analysis" in payload)) {
         throw new Error(
           "error" in payload ? payload.error : "Không thể phân tích vùng khoanh.",
@@ -315,23 +392,45 @@ export default function Home() {
       if (payload.quota) setQuotaUsed(payload.quota.used);
       setStage(payload.analysis.needsConfirmation ? "uncertain" : "confirm");
     } catch (cause) {
+      if (controller.signal.aborted) return;
       setError(
         cause instanceof Error ? cause.message : "Đã có lỗi không xác định.",
       );
       setStage("error");
+    } finally {
+      if (requestAbortRef.current === controller) requestAbortRef.current = null;
     }
   };
 
   const resetConversation = () => {
+    requestAbortRef.current?.abort();
     setQuestion(DEFAULT_QUESTION);
     clearDrawing();
+    setShowHistory(false);
+    setNotice("");
+  };
+
+  const changeScenario = (nextScenario: Scenario) => {
+    setScenario(nextScenario);
+    setQuestion(nextScenario === "hard"
+      ? "Vùng này gồm những phần nào? Nếu chưa rõ hãy yêu cầu tôi khoanh lại."
+      : DEFAULT_QUESTION);
+    clearDrawing();
+    setNotice(nextScenario === "hard"
+      ? "Case khó: thử khoanh vùng nhỏ hoặc chạm nhiều khối để kiểm tra fallback."
+      : "Case chuẩn: khoanh trọn một tiêu đề hoặc đoạn văn.");
+  };
+
+  const recordFeedback = (value: "up" | "down") => {
+    setFeedback(value);
+    setNotice(value === "up" ? "Đã ghi nhận: câu trả lời hữu ích." : "Đã ghi nhận: cần cải thiện câu trả lời này.");
   };
 
   return (
     <main className="appShell">
       <header className="topbar">
         <div className="topbarLeft">
-          <button className="iconButton backButton" aria-label="Quay lại">
+          <button className="iconButton backButton" aria-label="Quay lại" onClick={() => window.history.back()}>
             ‹
           </button>
           <div className="brandMark" aria-hidden="true">
@@ -349,10 +448,7 @@ export default function Home() {
           </div>
         </div>
         <div className="topbarActions">
-          <button className="localeButton">VI</button>
-          <button className="iconButton" aria-label="Chuyển giao diện tối">
-            ◐
-          </button>
+          <span className="localeButton" title="Giao diện tiếng Việt">VI</span>
           <div className="userPill">♙&nbsp; Sinh viên ẩn danh</div>
         </div>
       </header>
@@ -361,21 +457,20 @@ export default function Home() {
         <div className="readerPane">
           <div className="readerToolbar" aria-label="Thanh công cụ đọc">
             <div className="toolGroup">
-              <button className="toolButton">⌁ Đọc</button>
-              <button className="toolButton active">✎ Bút</button>
-              <button className="toolButton">⌁ Highlight</button>
-              <button className="toolButton compact">•••</button>
+              <button className={`toolButton ${annotationTool === "read" ? "active" : ""}`} onClick={() => setAnnotationTool("read")} aria-pressed={annotationTool === "read"}>⌁ Đọc</button>
+              <button className={`toolButton ${annotationTool === "pen" ? "active" : ""}`} onClick={() => setAnnotationTool("pen")} aria-pressed={annotationTool === "pen"}>✎ Bút</button>
+              <button className={`toolButton ${annotationTool === "highlight" ? "active" : ""}`} onClick={() => setAnnotationTool("highlight")} aria-pressed={annotationTool === "highlight"}>⌁ Highlight</button>
             </div>
             <div className="pageNote">Trang {currentSlide.page} · 1 note</div>
             <div className="zoomGroup">
-              <button>−</button>
-              <span>100%</span>
-              <button>＋</button>
+              <button onClick={() => setZoom((value) => Math.max(0.8, Number((value - 0.1).toFixed(1))))} disabled={zoom <= 0.8} aria-label="Thu nhỏ">−</button>
+              <span>{Math.round(zoom * 100)}%</span>
+              <button onClick={() => setZoom((value) => Math.min(1.3, Number((value + 0.1).toFixed(1))))} disabled={zoom >= 1.3} aria-label="Phóng to">＋</button>
             </div>
             <div className="utilityGroup">
-              <button aria-label="Thêm note">＋</button>
-              <button aria-label="Tải xuống">⇩</button>
-              <button aria-label="Hoàn tác">↶</button>
+              <button aria-label="Đặt câu hỏi" onClick={() => composerRef.current?.focus()}>＋</button>
+              <button aria-label="Tải nét khoanh" onClick={downloadAnnotation}>⇩</button>
+              <button aria-label="Hoàn tác nét cuối" onClick={undoDrawing} disabled={!canUndo}>↶</button>
               <button aria-label="Xóa nét" onClick={clearDrawing}>
                 ♲
               </button>
@@ -384,12 +479,9 @@ export default function Home() {
 
           <div className="penToolbar">
             <div className="colorSwatches" aria-label="Màu nét">
-              <span className="swatch red active" />
-              <span className="swatch blue" />
-              <span className="swatch green" />
-              <span className="swatch yellow" />
-              <span className="swatch orange" />
-              <span className="swatch black" />
+              {PEN_COLORS.map((color) => (
+                <button key={color.value} type="button" className={`swatch ${color.className} ${penColor === color.value ? "active" : ""}`} onClick={() => setPenColor(color.value)} aria-label={`Chọn màu ${color.name}`} aria-pressed={penColor === color.value} />
+              ))}
             </div>
             <span className="strokeLabel">NÉT</span>
             <span className="strokePreview" />
@@ -423,7 +515,7 @@ export default function Home() {
                 onSelect={() => changeSlide(slideIndex - 1)}
               />
             ) : null}
-            <article className="slideSheet currentSlide">
+            <article className="slideSheet currentSlide" style={{ "--slide-zoom": zoom } as CSSProperties}>
               <div className="slideMeta">
                 <span>Trang {currentSlide.page} / 43</span>
                 <span>day04-prompt-engineering-tool-calling.pdf</span>
@@ -454,6 +546,7 @@ export default function Home() {
                   onPointerMove={draw}
                   onPointerUp={finishDrawing}
                   onPointerCancel={finishDrawing}
+                  aria-disabled={annotationTool === "read"}
                 />
                 {stage !== "draw" && selection ? (
                   <div
@@ -482,9 +575,9 @@ export default function Home() {
           </div>
 
           <div className="pageNavigation">
-            <button onClick={() => changeSlide(slideIndex - 1)} disabled={slideIndex === 0}>‹</button>
+            <button onClick={() => changeSlide(slideIndex - 1)} disabled={slideIndex === 0 || stage === "analyzing"}>‹</button>
             <span>Trang {currentSlide.page} / 43</span>
-            <button onClick={() => changeSlide(slideIndex + 1)} disabled={slideIndex === TEST_SLIDES.length - 1}>›</button>
+            <button onClick={() => changeSlide(slideIndex + 1)} disabled={slideIndex === TEST_SLIDES.length - 1 || stage === "analyzing"}>›</button>
           </div>
         </div>
 
@@ -495,7 +588,7 @@ export default function Home() {
               <p>Trợ lý học theo ngữ cảnh</p>
             </div>
             <div className="tutorHeaderActions">
-              <button aria-label="Lịch sử" onClick={loadHistory}>↶</button>
+              <button aria-label="Lịch sử" onClick={loadHistory} disabled={isHistoryLoading}>{isHistoryLoading ? "…" : "↶"}</button>
               <button aria-label="Cuộc trò chuyện mới" onClick={resetConversation}>
                 ＋
               </button>
@@ -517,19 +610,13 @@ export default function Home() {
             <div className="scenarioToggle">
               <button
                 className={scenario === "normal" ? "active" : ""}
-                onClick={() => {
-                  setScenario("normal");
-                  if (stage !== "draw") setStage("draw");
-                }}
+                onClick={() => changeScenario("normal")}
               >
                 Case chuẩn
               </button>
               <button
                 className={scenario === "hard" ? "active" : ""}
-                onClick={() => {
-                  setScenario("hard");
-                  if (stage !== "draw") setStage("draw");
-                }}
+                onClick={() => changeScenario("hard")}
               >
                 Case khó
               </button>
@@ -540,7 +627,7 @@ export default function Home() {
             <span className="statusDot" />
             <div>
               <strong>Ngữ cảnh đã đồng bộ</strong>
-              <small>Slide trang {currentSlide.page} · Có annotation</small>
+              <small>Slide trang {currentSlide.page} · {annotationTool === "read" ? "Đang ở chế độ đọc" : "Sẵn sàng khoanh vùng"}</small>
             </div>
           </div>
 
@@ -556,7 +643,7 @@ export default function Home() {
                   <strong>Lịch sử gần đây</strong>
                   <button onClick={() => setShowHistory(false)} aria-label="Đóng lịch sử">×</button>
                 </div>
-                {history.length ? history.map((item) => (
+                {historyError ? <p>{historyError}</p> : history.length ? history.map((item) => (
                   <article key={item.id}>
                     <span>{new Date(item.createdAt).toLocaleString("vi-VN")}</span>
                     <strong>{item.regionTitle}</strong>
@@ -634,8 +721,8 @@ export default function Home() {
                 <div className="citation">Nguồn: Trang {currentSlide.page} · {analysis.evidence}</div>
                 <div className="answerFeedback">
                   <span>Câu trả lời này có hữu ích không?</span>
-                  <button>👍</button>
-                  <button>👎</button>
+                  <button className={feedback === "up" ? "feedbackActive" : ""} onClick={() => recordFeedback("up")} aria-pressed={feedback === "up"}>👍</button>
+                  <button className={feedback === "down" ? "feedbackActive" : ""} onClick={() => recordFeedback("down")} aria-pressed={feedback === "down"}>👎</button>
                 </div>
               </div>
             ) : null}
@@ -645,8 +732,8 @@ export default function Home() {
                 <span className="confidenceLabel warning">CHƯA THỂ PHÂN TÍCH</span>
                 <strong>{error}</strong>
                 <p>
-                  Kiểm tra OPENAI_API_KEY ở môi trường server rồi thử lại.
-                  Khóa không bao giờ được gửi xuống trình duyệt.
+                  Bạn có thể thử lại hoặc khoanh vùng rõ hơn. Nếu lỗi nói về API key,
+                  kiểm tra key ở môi trường server; khóa không bao giờ được gửi xuống trình duyệt.
                 </p>
                 <div className="responseActions">
                   <button className="primaryAction" onClick={submitQuestion}>Thử lại</button>
@@ -658,6 +745,7 @@ export default function Home() {
 
           <div className="composer">
             <textarea
+              ref={composerRef}
               value={question}
               onChange={(event) => setQuestion(event.target.value)}
               placeholder="Nhập câu hỏi hoặc khoanh trên slide..."
@@ -677,6 +765,7 @@ export default function Home() {
                 ? `Đã nhận vùng khoanh trên trang ${currentSlide.page}`
                 : "Dùng bút khoanh một vùng để bắt đầu"}
             </div>
+            {notice ? <div className="composerNotice" role="status">{notice}</div> : null}
           </div>
         </aside>
       </section>

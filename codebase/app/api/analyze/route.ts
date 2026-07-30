@@ -63,10 +63,19 @@ export async function POST(request: Request) {
       );
     }
 
-    const db = await getD1();
     const actor = await actorHash(request);
-    if (db) await ensureTutorSchema(db);
-    const used = db ? await countToday(db, actor) : 0;
+    let db: D1Database | null = null;
+    let used = 0;
+    try {
+      db = await getD1();
+      if (db) {
+        await ensureTutorSchema(db);
+        used = await countToday(db, actor);
+      }
+    } catch {
+      // History is optional. A database outage must not block the live tutor response.
+      db = null;
+    }
     if (used >= DAILY_LIMIT) {
       return Response.json(
         { error: "Bạn đã dùng hết 15 câu Tutor trong hôm nay.", quota: { used, limit: DAILY_LIMIT } },
@@ -86,7 +95,16 @@ export async function POST(request: Request) {
       body: JSON.stringify(requestBody),
       signal: AbortSignal.timeout(90_000),
     });
-    const payload = await upstream.json();
+    const rawPayload = await upstream.text();
+    let payload: unknown;
+    try {
+      payload = JSON.parse(rawPayload);
+    } catch {
+      return Response.json(
+        { error: "Dịch vụ AI trả về dữ liệu không hợp lệ. Hãy thử lại." },
+        { status: 502 },
+      );
+    }
     if (!upstream.ok) {
       const maybeError = payload as { error?: { message?: string } };
       return Response.json(
@@ -99,13 +117,11 @@ export async function POST(request: Request) {
       input.selection,
     );
     if (db) {
-      await saveAnalysis(
-        db,
-        actor,
-        input.page,
-        input.question.trim(),
-        analysis,
-      );
+      try {
+        await saveAnalysis(db, actor, input.page, input.question.trim(), analysis);
+      } catch {
+        // Deliver the answer even if saving history fails.
+      }
     }
     return Response.json({
       analysis,

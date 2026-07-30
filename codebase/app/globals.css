@@ -39,6 +39,12 @@ button {
   color: inherit;
 }
 
+button:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid rgba(36, 86, 197, 0.34);
+  outline-offset: 2px;
+}
+
 .appShell {
   min-height: 100vh;
   overflow: hidden;
@@ -165,6 +171,8 @@ button {
 }
 
 .localeButton {
+  display: inline-grid;
+  place-items: center;
   height: 36px;
   padding: 0 12px;
   color: #36527a;
@@ -295,7 +303,10 @@ button {
 .swatch {
   width: 19px;
   height: 19px;
+  padding: 0;
+  border: 0;
   border-radius: 50%;
+  cursor: pointer;
 }
 
 .swatch.active {
@@ -470,6 +481,10 @@ button {
   box-shadow: 0 3px 11px rgba(38, 53, 79, 0.08);
 }
 
+.currentSlide {
+  zoom: var(--slide-zoom, 1);
+}
+
 .slideMeta {
   display: flex;
   justify-content: space-between;
@@ -615,6 +630,11 @@ button {
   height: 100%;
   cursor: crosshair;
   touch-action: none;
+}
+
+.annotationCanvas[aria-disabled="true"] {
+  cursor: default;
+  pointer-events: none;
 }
 
 .detectedBox {
@@ -1186,6 +1206,12 @@ button {
   cursor: pointer;
 }
 
+.answerFeedback button.feedbackActive {
+  color: var(--blue-dark);
+  border-color: #93b6ef;
+  background: #eef5ff;
+}
+
 .composer {
   position: absolute;
   z-index: 4;
@@ -1241,6 +1267,19 @@ button {
   left: 37px;
   color: #8793a5;
   font-size: 9px;
+}
+
+.composerNotice {
+  position: absolute;
+  right: 78px;
+  bottom: 23px;
+  max-width: calc(100% - 120px);
+  overflow: hidden;
+  color: #315c92;
+  font-size: 9px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 @media (max-width: 760px) {

@@ -32,6 +32,9 @@ test("server-renders the VLearn CP3 Vision experience", async () => {
   assert.match(html, /day04-prompt-engineering-tool-calling\.pdf/);
   assert.match(html, /VLearn Tutor/);
   assert.match(html, /Case chuẩn/);
+  assert.match(html, /Case khó/);
+  assert.match(html, /Tải nét khoanh/);
+  assert.match(html, /Hoàn tác nét cuối/);
   assert.match(html, /Ngữ cảnh đã đồng bộ/);
   assert.doesNotMatch(html, /Your site is taking shape/);
   assert.doesNotMatch(html, /codex-preview/);
